@@ -5,3 +5,4 @@ wandb
 rich
 matplotlib
 safetensors
+pydantic==1.10
