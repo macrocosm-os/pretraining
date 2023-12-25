@@ -30,7 +30,7 @@ class ChainModelMetadataStore(ModelMetadataStore):
         self.subtensor.commit(
             wallet=self.wallet,
             netuid=self.subnet_uid,
-            data=model_id.json(exclude={"model_config"}),
+            data=model_id.to_compressed_str(),
         )
 
     async def retrieve_model_metadata(self, uid: int) -> ModelMetadata:
@@ -43,7 +43,8 @@ class ChainModelMetadataStore(ModelMetadataStore):
         commitment = metadata["info"]["fields"][0]
         hex_data = commitment[list(commitment.keys())[0]][2:]
 
-        model_id = ModelId.parse_raw(bytes.fromhex(hex_data).decode())
+        chain_str = bytes.fromhex(hex_data).decode()
+        model_id = ModelId.from_compressed_str(chain_str)
         model_metadata = ModelMetadata(id=model_id, block=metadata["block"])
 
         return model_metadata

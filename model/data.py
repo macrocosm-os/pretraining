@@ -1,6 +1,6 @@
-from typing import Any, Dict
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Any, Dict, Type
 from transformers import PreTrainedModel
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ModelId(BaseModel):
@@ -16,6 +16,21 @@ class ModelId(BaseModel):
     # TODO: Consider only using commit hashes for revision and remove need for content hash.
     rev: str = Field(description="Revision of the model.")
     hash: str = Field(description="Hash of the trained model.")
+
+    def to_compressed_str(self) -> str:
+        """Returns a compressed string representation."""
+        return f"{self.path}:{self.name}:{self.rev}:{self.hash}"
+
+    @classmethod
+    def from_compressed_str(cls, cs: str) -> Type["ModelId"]:
+        """Returns an instance of this class from a compressed string representation"""
+        tokens = cs.split(":")
+        return cls(
+            path=tokens[0],
+            name=tokens[1],
+            rev=tokens[2],
+            hash=tokens[3],
+        )
 
 
 class Model(BaseModel):
