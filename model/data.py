@@ -1,25 +1,26 @@
 from typing import Any, Dict, Type
 from transformers import PreTrainedModel
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field, PositiveInt
 
 
 class ModelId(BaseModel):
     """Uniquely identifies a trained model"""
 
     # Makes the object "Immutable" once created.
-    model_config = ConfigDict(frozen=True)
+    class Config:
+        frozen = True
 
+    # TODO add pydantic validations on underlying fields.
     path: str = Field(
         description="Path to where this model can be found. ex. a huggingface.io repo."
     )
     name: str = Field(description="Name of the model.")
-    # TODO: Consider only using commit hashes for revision and remove need for content hash.
-    rev: str = Field(description="Revision of the model.")
+    commit: str = Field(description="Commit of the model.")
     hash: str = Field(description="Hash of the trained model.")
 
     def to_compressed_str(self) -> str:
         """Returns a compressed string representation."""
-        return f"{self.path}:{self.name}:{self.rev}:{self.hash}"
+        return f"{self.path}:{self.name}:{self.commit}:{self.hash}"
 
     @classmethod
     def from_compressed_str(cls, cs: str) -> Type["ModelId"]:
@@ -46,7 +47,6 @@ class Model(BaseModel):
 
 class ModelMetadata(BaseModel):
     id: ModelId = Field(description="Identifier for this trained model.")
-    # TODO consider making this a timestamp by converting the block.
-    block: int = Field(
+    block: PositiveInt = Field(
         description="Block on which this model was claimed on the chain."
     )

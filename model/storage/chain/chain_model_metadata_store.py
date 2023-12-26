@@ -26,6 +26,9 @@ class ChainModelMetadataStore(ModelMetadataStore):
     # TODO actually make this asynchronous with threadpools etc.
     async def store_model_metadata(self, uid: int, model_id: ModelId):
         """Stores model metadata on this subnet for a specific wallet."""
+        if self.wallet is None:
+            bt.logging.error("No wallet available to write to the chain.")
+
         # TODO: Confirm that the hotkey matches the wallet using self.metagraph.hotkeys[uid]
         self.subtensor.commit(
             wallet=self.wallet,
@@ -53,7 +56,9 @@ class ChainModelMetadataStore(ModelMetadataStore):
 # Can only commit data every ~20 minutes.
 async def test_store_model_metadata():
     """Verifies that the ChainModelMetadataStore can store data on the chain."""
-    model_id = ModelId(path="TestPath", name="TestModel", hash="TestHash1", rev="1.0")
+    model_id = ModelId(
+        path="TestPath", name="TestModel", hash="TestHash1", commit="1.0"
+    )
 
     # Use a different subnet that does not leverage chain storage to avoid conflicts.
     # TODO switch to a mocked version when it supports commits.
@@ -80,7 +85,7 @@ async def test_store_model_metadata():
 async def test_retrieve_model_metadata():
     """Verifies that the ChainModelMetadataStore can retrieve data from the chain."""
     expected_model_id = ModelId(
-        path="TestPath", name="TestModel", hash="TestHash1", rev="1.0"
+        path="TestPath", name="TestModel", hash="TestHash1", commit="1.0"
     )
 
     # Use a different subnet that does not leverage chain storage to avoid conflicts.
@@ -105,7 +110,9 @@ async def test_retrieve_model_metadata():
 # Can only commit data every ~20 minutes.
 async def test_roundtrip_model_metadata():
     """Verifies that the ChainModelMetadataStore can roundtrip data on the chain."""
-    model_id = ModelId(path="TestPath", name="TestModel", hash="TestHash1", rev="1.0")
+    model_id = ModelId(
+        path="TestPath", name="TestModel", hash="TestHash1", commit="1.0"
+    )
 
     # Use a different subnet that does not leverage chain storage to avoid conflicts.
     # TODO switch to a mocked version when it supports commits.

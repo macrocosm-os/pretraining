@@ -1,4 +1,5 @@
 import asyncio
+import bittensor as bt
 import os
 from model.data import Model, ModelId
 from model.storage import utils
@@ -11,7 +12,10 @@ class HuggingFaceModelStore(ModelStore):
 
     async def store_model(self, uid: int, model: Model):
         """Stores a trained model in Hugging Face."""
+        # TODO error message if not found.
         token = os.getenv("HF_ACCESS_TOKEN")
+        if not token:
+            bt.logging.error("No Hugging Face access token found to write to the hub.")
 
         # PreTrainedModel.save_pretrained only saves locally
         model.pt_model.push_to_hub(
@@ -24,7 +28,7 @@ class HuggingFaceModelStore(ModelStore):
         # Transformers library can pick up a model based on the hugging face path (username/model) + rev.
         model = AutoModel.from_pretrained(
             pretrained_model_name_or_path=model_id.path + "/" + model_id.name,
-            revision=model_id.rev,
+            revision=model_id.commit,
             cache_dir=utils.get_local_model_dir(uid, model_id),
         )
 
@@ -38,7 +42,7 @@ async def test_roundtrip_model():
         path=hf_name,
         name="TestModel",
         hash="TestHash1",
-        rev="main",
+        commit="main",
     )
 
     pt_model = DistilBertModel(
@@ -69,7 +73,7 @@ async def test_retrieve_model():
         path="pszemraj",
         name="distilgpt2-HC3",
         hash="TestHash1",
-        rev="6f9ad47",
+        commit="6f9ad47",
     )
 
     hf_model_store = HuggingFaceModelStore()
