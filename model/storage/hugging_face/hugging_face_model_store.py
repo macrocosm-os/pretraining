@@ -1,6 +1,7 @@
 import asyncio
 import os
 from model.data import Model, ModelId
+from model.storage import utils
 from model.storage.model_store import ModelStore
 from transformers import AutoModel, DistilBertModel, DistilBertConfig
 
@@ -8,7 +9,7 @@ from transformers import AutoModel, DistilBertModel, DistilBertConfig
 class HuggingFaceModelStore(ModelStore):
     """Hugging Face based implementation for storing and retrieving a model."""
 
-    async def store_model(self, model: Model):
+    async def store_model(self, uid: int, model: Model):
         """Stores a trained model in Hugging Face."""
         token = os.getenv("HF_ACCESS_TOKEN")
 
@@ -18,13 +19,13 @@ class HuggingFaceModelStore(ModelStore):
         )
 
     # TODO actually make this asynchronous with threadpools etc.
-    async def retrieve_model(self, model_id: ModelId) -> Model:
-        """Retrieves a trained model from Hugging Face or the local Hugging Face cache."""
+    async def retrieve_model(self, uid: int, model_id: ModelId) -> Model:
+        """Retrieves a trained model from Hugging Face."""
         # Transformers library can pick up a model based on the hugging face path (username/model) + rev.
-        # Will default to the local hf cache first, then fall back on going to the hub.
         model = AutoModel.from_pretrained(
-            model_id.path + "/" + model_id.name,
+            pretrained_model_name_or_path=model_id.path + "/" + model_id.name,
             revision=model_id.rev,
+            cache_dir=utils.get_local_model_dir(uid, model_id),
         )
 
         return Model(id=model_id, pt_model=model)
@@ -50,10 +51,10 @@ async def test_roundtrip_model():
     hf_model_store = HuggingFaceModelStore()
 
     # Store the model in hf.
-    await hf_model_store.store_model(model=model)
+    await hf_model_store.store_model(uid=0, model=model)
 
     # Retrieve the model from hf.
-    retrieved_model = await hf_model_store.retrieve_model(model_id=model_id)
+    retrieved_model = await hf_model_store.retrieve_model(uid=0, model_id=model_id)
 
     # Check that they match.
     # TODO create appropriate equality check.
@@ -74,7 +75,7 @@ async def test_retrieve_model():
     hf_model_store = HuggingFaceModelStore()
 
     # Retrieve the model from hf (first run) or cache.
-    model = await hf_model_store.retrieve_model(model_id=model_id)
+    model = await hf_model_store.retrieve_model(uid=0, model_id=model_id)
 
     print(f"Finished retrieving the model with id: {model.id}")
 

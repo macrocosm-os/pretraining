@@ -1,3 +1,4 @@
+local-models/
 neurons/pretraining_model/
 # Byte-compiled / optimized / DLL files
 __pycache__/
