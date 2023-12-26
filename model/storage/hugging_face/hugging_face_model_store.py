@@ -10,7 +10,7 @@ from transformers import AutoModel, DistilBertModel, DistilBertConfig
 class HuggingFaceModelStore(ModelStore):
     """Hugging Face based implementation for storing and retrieving a model."""
 
-    async def store_model(self, uid: int, model: Model) -> ModelId:
+    async def store_model(self, hotkey: str, model: Model) -> ModelId:
         """Stores a trained model in Hugging Face."""
         token = os.getenv("HF_ACCESS_TOKEN")
         if not token:
@@ -32,7 +32,7 @@ class HuggingFaceModelStore(ModelStore):
         )
 
     # TODO actually make this asynchronous with threadpools etc.
-    async def retrieve_model(self, uid: int, model_id: ModelId) -> Model:
+    async def retrieve_model(self, hotkey: str, model_id: ModelId) -> Model:
         """Retrieves a trained model from Hugging Face."""
         if not model_id.commit:
             raise ValueError("No Hugging Face commit id found to read from the hub.")
@@ -41,7 +41,7 @@ class HuggingFaceModelStore(ModelStore):
         model = AutoModel.from_pretrained(
             pretrained_model_name_or_path=model_id.path + "/" + model_id.name,
             revision=model_id.commit,
-            cache_dir=utils.get_local_model_dir(uid, model_id),
+            cache_dir=utils.get_local_model_dir(hotkey, model_id),
             use_safetensors=True,
         )
 
@@ -68,10 +68,12 @@ async def test_roundtrip_model():
     hf_model_store = HuggingFaceModelStore()
 
     # Store the model in hf getting back the id with commit.
-    model.id = await hf_model_store.store_model(uid=0, model=model)
+    model.id = await hf_model_store.store_model(hotkey="hotkey0", model=model)
 
     # Retrieve the model from hf.
-    retrieved_model = await hf_model_store.retrieve_model(uid=0, model_id=model.id)
+    retrieved_model = await hf_model_store.retrieve_model(
+        hotkey="hotkey0", model_id=model.id
+    )
 
     # Check that they match.
     # TODO create appropriate equality check.
@@ -92,7 +94,7 @@ async def test_retrieve_model():
     hf_model_store = HuggingFaceModelStore()
 
     # Retrieve the model from hf (first run) or cache.
-    model = await hf_model_store.retrieve_model(uid=0, model_id=model_id)
+    model = await hf_model_store.retrieve_model(hotkey="hotkey0", model_id=model_id)
 
     print(f"Finished retrieving the model with id: {model.id}")
 

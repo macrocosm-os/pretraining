@@ -9,6 +9,7 @@ class ModelId(BaseModel):
     # Makes the object "Immutable" once created.
     class Config:
         frozen = True
+        extra = "forbid"
 
     # TODO add pydantic validations on underlying fields.
     path: str = Field(
@@ -31,7 +32,7 @@ class ModelId(BaseModel):
         return cls(
             path=tokens[0],
             name=tokens[1],
-            rev=tokens[2],
+            commit=tokens[2],
             hash=tokens[3],
         )
 

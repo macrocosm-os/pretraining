@@ -9,19 +9,21 @@ from transformers import AutoModel, DistilBertModel, DistilBertConfig
 class LocalModelStore(ModelStore):
     """Local storage based implementation for storing and retrieving a model."""
 
-    async def clear_miner_directory(self, uid: int):
+    async def clear_miner_directory(self, hotkey: str):
         """Clears out the directory for a given uid."""
-        shutil.rmtree(path=utils.get_local_miner_dir(uid), ignore_errors=True)
+        shutil.rmtree(path=utils.get_local_miner_dir(hotkey), ignore_errors=True)
 
-    async def clear_model_directory(self, uid: int, model_id: ModelId):
+    async def clear_model_directory(self, hotkey: str, model_id: ModelId):
         """Clears out the directory for a given model."""
-        shutil.rmtree(path=utils.get_local_model_dir(uid, model_id), ignore_errors=True)
+        shutil.rmtree(
+            path=utils.get_local_model_dir(hotkey, model_id), ignore_errors=True
+        )
 
-    async def store_model(self, uid: int, model: Model) -> ModelId:
+    async def store_model(self, hotkey: str, model: Model) -> ModelId:
         """Stores a trained model locally."""
 
         model.pt_model.save_pretrained(
-            save_directory=utils.get_local_model_dir(uid, model.id),
+            save_directory=utils.get_local_model_dir(hotkey, model.id),
             safe_serialization=True,
         )
 
@@ -29,11 +31,11 @@ class LocalModelStore(ModelStore):
         return model.id
 
     # TODO actually make this asynchronous with threadpools etc.
-    async def retrieve_model(self, uid: int, model_id: ModelId) -> Model:
+    async def retrieve_model(self, hotkey: str, model_id: ModelId) -> Model:
         """Retrieves a trained model locally."""
 
         model = AutoModel.from_pretrained(
-            pretrained_model_name_or_path=utils.get_local_model_dir(uid, model_id),
+            pretrained_model_name_or_path=utils.get_local_model_dir(hotkey, model_id),
             revision=model_id.commit,
             local_files_only=True,
             use_safetensors=True,
@@ -60,13 +62,15 @@ async def test_roundtrip_model():
     local_model_store = LocalModelStore()
 
     # Clear the local storage
-    await local_model_store.clear_model_directory(uid=0, model_id=model_id)
+    await local_model_store.clear_model_directory(hotkey="hotkey0", model_id=model_id)
 
     # Store the model locally.
-    await local_model_store.store_model(uid=0, model=model)
+    await local_model_store.store_model(hotkey="hotkey0", model=model)
 
     # Retrieve the model locally.
-    retrieved_model = await local_model_store.retrieve_model(uid=0, model_id=model_id)
+    retrieved_model = await local_model_store.retrieve_model(
+        hotkey="hotkey0", model_id=model_id
+    )
 
     # Check that they match.
     # TODO create appropriate equality check.
