@@ -1,5 +1,5 @@
 import asyncio
-import os
+import shutil
 from model.data import Model, ModelId
 from model.storage import utils
 from model.storage.model_store import ModelStore
@@ -11,11 +11,11 @@ class LocalModelStore(ModelStore):
 
     async def clear_miner_directory(self, uid: int):
         """Clears out the directory for a given uid."""
-        os.rmdir(utils.get_local_miner_dir(uid))
+        shutil.rmtree(path=utils.get_local_miner_dir(uid), ignore_errors=True)
 
     async def clear_model_directory(self, uid: int, model_id: ModelId):
         """Clears out the directory for a given model."""
-        os.rmdir(utils.get_local_model_dir(uid, model_id))
+        shutil.rmtree(path=utils.get_local_model_dir(uid, model_id), ignore_errors=True)
 
     async def store_model(self, uid: int, model: Model):
         """Stores a trained model locally."""
@@ -32,6 +32,7 @@ class LocalModelStore(ModelStore):
             pretrained_model_name_or_path=utils.get_local_model_dir(uid, model_id),
             revision=model_id.commit,
             local_files_only=True,
+            use_safetensors=True,
         )
 
         return Model(id=model_id, pt_model=model)
@@ -55,10 +56,13 @@ async def test_roundtrip_model():
     model = Model(id=model_id, pt_model=pt_model)
     local_model_store = LocalModelStore()
 
-    # Store the model in hf.
+    # Clear the local storage
+    await local_model_store.clear_model_directory(uid=0, model_id=model_id)
+
+    # Store the model locally.
     await local_model_store.store_model(uid=0, model=model)
 
-    # Retrieve the model from hf.
+    # Retrieve the model locally.
     retrieved_model = await local_model_store.retrieve_model(uid=0, model_id=model_id)
 
     # Check that they match.

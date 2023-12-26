@@ -30,6 +30,7 @@ class HuggingFaceModelStore(ModelStore):
             pretrained_model_name_or_path=model_id.path + "/" + model_id.name,
             revision=model_id.commit,
             cache_dir=utils.get_local_model_dir(uid, model_id),
+            use_safetensors=True,
         )
 
         return Model(id=model_id, pt_model=model)
