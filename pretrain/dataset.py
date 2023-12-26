@@ -25,9 +25,10 @@ from transformers import AutoTokenizer
 import time
 import random
 
-model_name = 'distilgpt2'
+model_name = "distilgpt2"
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 tokenizer.pad_token = tokenizer.eos_token
+
 
 class SubsetFalconLoader(IterableDataset):
     max_pages: int = 968000015
@@ -41,7 +42,7 @@ class SubsetFalconLoader(IterableDataset):
         self.params = {
             "dataset": "tiiuae/falcon-refinedweb",
             "config": "default",
-            "split": "train"
+            "split": "train",
         }
         self.pages = pages
         self.buffer = []
@@ -66,25 +67,28 @@ class SubsetFalconLoader(IterableDataset):
                 break  # If the request was successful, break out of the retry loop
             except requests.exceptions.RequestException as e:
                 attempt += 1
-                bt.logging.warning(f"Failed to fetch data, retrying. Attempt {attempt}/{self.retry_limit}")
+                bt.logging.warning(
+                    f"Failed to fetch data, retrying. Attempt {attempt}/{self.retry_limit}"
+                )
                 if attempt < self.retry_limit:
                     time.sleep(self.retry_delay)  # Wait before the next retry
                 else:
-                    bt.logging.error("Maximum retry limit reached. Unable to fetch data.")
+                    bt.logging.error(
+                        "Maximum retry limit reached. Unable to fetch data."
+                    )
                     raise
-            
+
     def __iter__(self):
         while len(self.buffer) >= self.sequence_length * self.batch_size:
             batch = []
             for _ in range(self.batch_size):
-                batch.append(torch.tensor(self.buffer[:self.sequence_length]))
-                self.buffer = self.buffer[self.sequence_length:]
+                batch.append(torch.tensor(self.buffer[: self.sequence_length]))
+                self.buffer = self.buffer[self.sequence_length :]
             yield torch.stack(batch)
-            
+
     def __next__(self):
         batch = []
         for _ in range(self.batch_size):
-            batch.append(torch.tensor( self.buffer[:self.sequence_length] ))
-            self.buffer = self.buffer[self.sequence_length:]
+            batch.append(torch.tensor(self.buffer[: self.sequence_length]))
+            self.buffer = self.buffer[self.sequence_length :]
         return torch.stack(batch)
-            

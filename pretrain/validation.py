@@ -25,7 +25,8 @@ import pretrain
 import traceback
 import bittensor as bt
 
-def iswin( loss_i, loss_j, time_i, time_j ):
+
+def iswin(loss_i, loss_j, time_i, time_j):
     """
     Determines the winner between two models based on the epsilon adjusted loss.
 
@@ -42,12 +43,13 @@ def iswin( loss_i, loss_j, time_i, time_j ):
     loss_j = (1 - pretrain.timestamp_epsilon) * loss_j if time_j < time_i else loss_j
     return loss_i < loss_j
 
-def compute_wins( 
-        uids: typing.List[int], 
-        losses: typing.Dict[ int, typing.List[float] ], 
-        batches: typing.List[ torch.FloatTensor],
-        timestamps: typing.Dict[ int, float ] 
-    ):
+
+def compute_wins(
+    uids: typing.List[int],
+    losses: typing.Dict[int, typing.List[float]],
+    batches: typing.List[torch.FloatTensor],
+    timestamps: typing.Dict[int, float],
+):
     """
     Computes the wins and win rate for each model based on loss comparison.
 
@@ -65,16 +67,17 @@ def compute_wins(
 
     # Iterate over each pair of models
     for i in uids:
-        time_i = timestamps[ i ]
-        loss_i = losses[ i ]
+        time_i = timestamps[i]
+        loss_i = losses[i]
         total_matches = 0
         for j in uids:
-            if i == j: continue
-            time_j = timestamps[ i ]
-            loss_j = losses[ i ]
-            for b, _ in enumerate( batches ):
+            if i == j:
+                continue
+            time_j = timestamps[i]
+            loss_j = losses[i]
+            for b, _ in enumerate(batches):
                 # Increment wins for model i if it's better than model j
-                wins[i] += 1 if iswin( loss_i, loss_j, time_i, time_j ) else 0
+                wins[i] += 1 if iswin(loss_i, loss_j, time_i, time_j) else 0
                 total_matches += 1
 
         # Calculate win rate for model i
@@ -82,7 +85,10 @@ def compute_wins(
 
     return wins, win_rate
 
-def compute_losses(model, batches: typing.List[torch.Tensor], device: str) -> typing.List[ float ]:
+
+def compute_losses(
+    model, batches: typing.List[torch.Tensor], device: str
+) -> typing.List[float]:
     """
     Computes the losses for a given model on provided batches.
 

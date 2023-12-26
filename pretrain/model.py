@@ -1,4 +1,3 @@
-
 # The MIT License (MIT)
 # Copyright © 2023 Yuma Rao
 # Copyright © 2023 const
@@ -21,11 +20,11 @@ from transformers import GPT2Config, GPT2LMHeadModel
 
 config = GPT2Config()
 
+
 def get_model():
     config = GPT2Config(
-        n_head = 10,
-        n_layer = 12,
-        n_embd = 760,
+        n_head=10,
+        n_layer=12,
+        n_embd=760,
     )
     return GPT2LMHeadModel(config)
-

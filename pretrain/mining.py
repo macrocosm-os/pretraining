@@ -27,6 +27,7 @@ import pretrain as pt
 import bittensor as bt
 from safetensors.torch import load_model, save_model
 
+
 def path(wallet: int) -> str:
     """
     Constructs a file path for storing wallet-related data.
@@ -46,6 +47,7 @@ def path(wallet: int) -> str:
             "miner",
         )
     )
+
 
 def model_path(wallet: int) -> str:
     """
@@ -78,7 +80,8 @@ def runidpath(wallet) -> str:
     Returns:
     str: A string representing the run ID file path.
     """
-    return path(wallet) + '/run.json'
+    return path(wallet) + "/run.json"
+
 
 def load_runid(wallet: int) -> typing.Optional[str]:
     """
@@ -91,11 +94,12 @@ def load_runid(wallet: int) -> typing.Optional[str]:
     Optional[str]: The run ID if available, otherwise None.
     """
     try:
-        with open(runidpath(wallet), 'r') as f:
-            return json.load(f)['WANDB_RUN_ID']
+        with open(runidpath(wallet), "r") as f:
+            return json.load(f)["WANDB_RUN_ID"]
     except Exception as e:
         return None
-    
+
+
 def find_runid(wallet, metagraph: typing.Optional[bt.metagraph] = None):
     """
     Retrieves the run ID from the file system.
@@ -118,11 +122,9 @@ def find_runid(wallet, metagraph: typing.Optional[bt.metagraph] = None):
         filters={
             "config.version": pt.__version__,
             "config.type": "miner",
-            "config.run_name": {
-                "$regex": f"miner-{my_uid}-.*"
-            },
+            "config.run_name": {"$regex": f"miner-{my_uid}-.*"},
             "config.hotkey": expected_hotkey,
-        }
+        },
     )
 
     # Iterate through runs. Newer runs are processed first.
@@ -130,10 +132,12 @@ def find_runid(wallet, metagraph: typing.Optional[bt.metagraph] = None):
         pt.graph.check_run_validity(run, metagraph)
         return run.id
     return None
-    
+
+
 def save_runid(wallet, run_id):
-    with open(runidpath(wallet), 'w') as f:
-        json.dump({'WANDB_RUN_ID': run_id}, f)
+    with open(runidpath(wallet), "w") as f:
+        json.dump({"WANDB_RUN_ID": run_id}, f)
+
 
 def new_runid(wallet):
     """
@@ -146,11 +150,13 @@ def new_runid(wallet):
     str: The newly generated run ID.
     """
     run_id = wandb.util.generate_id()
-    save_runid( wallet, run_id )
+    save_runid(wallet, run_id)
     return run_id
 
 
-def uid(wallet, metagraph: typing.Optional[bt.metagraph] = None) -> typing.Optional[ int ]:
+def uid(
+    wallet, metagraph: typing.Optional[bt.metagraph] = None
+) -> typing.Optional[int]:
     """
     Retrieves the user ID (UID) based on the wallet and metagraph.
 
@@ -163,10 +169,13 @@ def uid(wallet, metagraph: typing.Optional[bt.metagraph] = None) -> typing.Optio
     """
     if not metagraph:
         metagraph = bt.subtensor().metagraph(pt.NETUID)
-    if wallet.hotkey.ss58_address not in metagraph.hotkeys: 
-        bt.logging.error(f"You don't have a UID because your wallet is not registered on subnet 9. Use `btcli s register --netuid {pt.NETUID}` to register.")
+    if wallet.hotkey.ss58_address not in metagraph.hotkeys:
+        bt.logging.error(
+            f"You don't have a UID because your wallet is not registered on subnet 9. Use `btcli s register --netuid {pt.NETUID}` to register."
+        )
         return None
     return metagraph.hotkeys.index(wallet.hotkey.ss58_address)
+
 
 def init(wallet, metagraph: typing.Optional[bt.metagraph] = None):
     """
@@ -191,34 +200,36 @@ def init(wallet, metagraph: typing.Optional[bt.metagraph] = None):
 
     # Find the UID for this wallet.
     my_uid = uid(wallet, metagraph)
-    if my_uid is None: 
+    if my_uid is None:
         return None
 
     # Try to load the run ID from the file system.
     if load_runid(wallet) is None:
         # If we cant load the runid, try to load the run ID from wandb based on wallet.
         if find_runid(wallet, metagraph) is None:
-            save_runid(wallet, new_runid(wallet) )
+            save_runid(wallet, new_runid(wallet))
 
     # Load the run ID from the file system.
     _run_id = load_runid(wallet)
-    
+
     # Creating a unique run name
-    run_name = f'miner-{my_uid}-' + ''.join(random.choices(string.ascii_uppercase + string.digits, k=10))
+    run_name = f"miner-{my_uid}-" + "".join(
+        random.choices(string.ascii_uppercase + string.digits, k=10)
+    )
     config = bt.config()
     config.uid = my_uid
     config.hotkey = wallet.hotkey.ss58_address
     config.run_name = run_name
     config.version = pt.__version__
-    config.type = 'miner'
+    config.type = "miner"
 
     # Initialize wandb run
     wandb_run = wandb.init(
-        id = _run_id,
+        id=_run_id,
         name=run_name,
         anonymous="allow",
         project=pt.WANDB_PROJECT,
-        entity='opentensor-dev',
+        entity="opentensor-dev",
         config=config,
         dir=config.full_path,
         allow_val_change=True,
@@ -255,34 +266,36 @@ def init_validator(wallet, metagraph: typing.Optional[bt.metagraph] = None):
 
     # Find the UID for this wallet.
     my_uid = uid(wallet, metagraph)
-    if my_uid is None: 
+    if my_uid is None:
         return None
 
     # Try to load the run ID from the file system.
     if load_runid(wallet) is None:
         # If we cant load the runid, try to load the run ID from wandb based on wallet.
         if find_runid(wallet, metagraph) is None:
-            save_runid(wallet, new_runid(wallet) )
+            save_runid(wallet, new_runid(wallet))
 
     # Load the run ID from the file system.
     _run_id = load_runid(wallet)
-    
+
     # Creating a unique run name
-    run_name = f'validator-{my_uid}-' + ''.join(random.choices(string.ascii_uppercase + string.digits, k=10))
+    run_name = f"validator-{my_uid}-" + "".join(
+        random.choices(string.ascii_uppercase + string.digits, k=10)
+    )
     config = bt.config()
     config.uid = my_uid
     config.hotkey = wallet.hotkey.ss58_address
     config.run_name = run_name
     config.version = pt.__version__
-    config.type = 'validator'
+    config.type = "validator"
 
     # Initialize wandb run
     wandb_run = wandb.init(
-        id = _run_id,
+        id=_run_id,
         name=run_name,
         anonymous="allow",
         project=pt.WANDB_PROJECT,
-        entity='opentensor-dev',
+        entity="opentensor-dev",
         config=config,
         dir=config.full_path,
         allow_val_change=True,
@@ -295,7 +308,10 @@ def init_validator(wallet, metagraph: typing.Optional[bt.metagraph] = None):
 
     return wandb_run
 
-def load_run(wallet: int, metagraph: typing.Optional[bt.metagraph] = None) -> typing.Optional['wandb.run']:
+
+def load_run(
+    wallet: int, metagraph: typing.Optional[bt.metagraph] = None
+) -> typing.Optional["wandb.run"]:
     """
     Loads a wandb run based on the wallet and metagraph information.
 
@@ -318,11 +334,9 @@ def load_run(wallet: int, metagraph: typing.Optional[bt.metagraph] = None) -> ty
         filters={
             "config.version": pt.__version__,
             "config.type": "miner",
-            "config.run_name": {
-                "$regex": f"miner-{my_uid}-.*"
-            },
+            "config.run_name": {"$regex": f"miner-{my_uid}-.*"},
             "config.hotkey": expected_hotkey,
-        }
+        },
     )
 
     # Iterate through runs. Newer runs are processed first.
@@ -331,7 +345,8 @@ def load_run(wallet: int, metagraph: typing.Optional[bt.metagraph] = None) -> ty
         return run
     return None
 
-def push( wallet, wandb_run ):
+
+def push(wallet, wandb_run):
     """
     Saves the model state previously saved and updates the wandb run.
 
@@ -343,11 +358,12 @@ def push( wallet, wandb_run ):
         None.
     """
     _path = path(wallet)
-    _model_path = model_path( wallet )
+    _model_path = model_path(wallet)
     # Save the new best model to wandb.
-    wandb_run.save( _model_path, base_path = _path )
+    wandb_run.save(_model_path, base_path=_path)
 
-def save( wallet, model ):
+
+def save(wallet, model):
     """
     Saves the model state to your wallet path.
 
@@ -363,10 +379,10 @@ def save( wallet, model ):
         os.makedirs(os.path.dirname(_model_path), exist_ok=True)
 
     # Save the model state to the specified path
-    save_model( model, _model_path )
+    save_model(model, _model_path)
 
 
-def load( wallet, device: str = 'cpu'):
+def load(wallet, device: str = "cpu"):
     """
     Loads the model state to your wallet path.
 
@@ -378,11 +394,12 @@ def load( wallet, device: str = 'cpu'):
     """
     _model_path = model_path(wallet)
     model = pt.model.get_model()
-    load_model( model, _model_path )
+    load_model(model, _model_path)
     return model
 
-def update( wallet, model ):
-    _run = init( wallet )
-    save( wallet, model )
-    push( wallet, _run )
+
+def update(wallet, model):
+    _run = init(wallet)
+    save(wallet, model)
+    push(wallet, _run)
     _run.finish()
