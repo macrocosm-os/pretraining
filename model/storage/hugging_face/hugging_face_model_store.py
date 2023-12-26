@@ -10,16 +10,25 @@ from transformers import AutoModel, DistilBertModel, DistilBertConfig
 class HuggingFaceModelStore(ModelStore):
     """Hugging Face based implementation for storing and retrieving a model."""
 
-    async def store_model(self, uid: int, model: Model):
+    async def store_model(self, uid: int, model: Model) -> ModelId:
         """Stores a trained model in Hugging Face."""
-        # TODO error message if not found.
         token = os.getenv("HF_ACCESS_TOKEN")
         if not token:
             bt.logging.error("No Hugging Face access token found to write to the hub.")
 
         # PreTrainedModel.save_pretrained only saves locally
-        model.pt_model.push_to_hub(
-            repo_id=model.id.path + "/" + model.id.name, token=token
+        commit_info = model.pt_model.push_to_hub(
+            repo_id=model.id.path + "/" + model.id.name,
+            token=token,
+            safe_serialization=True,
+        )
+
+        # Return a new ModelId with the uploaded commit.
+        return ModelId(
+            path=model.id.path,
+            name=model.id.name,
+            hash=model.id.hash,
+            commit=commit_info.oid,
         )
 
     # TODO actually make this asynchronous with threadpools etc.
@@ -55,11 +64,11 @@ async def test_roundtrip_model():
     model = Model(id=model_id, pt_model=pt_model)
     hf_model_store = HuggingFaceModelStore()
 
-    # Store the model in hf.
-    await hf_model_store.store_model(uid=0, model=model)
+    # Store the model in hf getting back the id with commit.
+    model.id = await hf_model_store.store_model(uid=0, model=model)
 
     # Retrieve the model from hf.
-    retrieved_model = await hf_model_store.retrieve_model(uid=0, model_id=model_id)
+    retrieved_model = await hf_model_store.retrieve_model(uid=0, model_id=model.id)
 
     # Check that they match.
     # TODO create appropriate equality check.
@@ -87,4 +96,4 @@ async def test_retrieve_model():
 
 if __name__ == "__main__":
     asyncio.run(test_retrieve_model())
-    # asyncio.run(test_roundtrip_model())
+    asyncio.run(test_roundtrip_model())

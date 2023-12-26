@@ -17,12 +17,16 @@ class LocalModelStore(ModelStore):
         """Clears out the directory for a given model."""
         shutil.rmtree(path=utils.get_local_model_dir(uid, model_id), ignore_errors=True)
 
-    async def store_model(self, uid: int, model: Model):
+    async def store_model(self, uid: int, model: Model) -> ModelId:
         """Stores a trained model locally."""
 
         model.pt_model.save_pretrained(
-            save_directory=utils.get_local_model_dir(uid, model.id)
+            save_directory=utils.get_local_model_dir(uid, model.id),
+            safe_serialization=True,
         )
+
+        # Return the same model id used as we do not edit the commit information.
+        return model.id
 
     # TODO actually make this asynchronous with threadpools etc.
     async def retrieve_model(self, uid: int, model_id: ModelId) -> Model:
