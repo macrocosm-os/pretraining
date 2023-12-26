@@ -1,4 +1,4 @@
-from typing import Any, Dict, Type
+from typing import Any, Dict, Optional, Type
 from transformers import PreTrainedModel
 from pydantic import BaseModel, Field, PositiveInt
 
@@ -15,7 +15,9 @@ class ModelId(BaseModel):
         description="Path to where this model can be found. ex. a huggingface.io repo."
     )
     name: str = Field(description="Name of the model.")
-    commit: str = Field(description="Commit of the model.")
+    commit: Optional[str] = Field(
+        description="Commit of the model. May be empty if not yet commited."
+    )
     hash: str = Field(description="Hash of the trained model.")
 
     def to_compressed_str(self) -> str:

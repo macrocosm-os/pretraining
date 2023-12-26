@@ -14,7 +14,7 @@ class HuggingFaceModelStore(ModelStore):
         """Stores a trained model in Hugging Face."""
         token = os.getenv("HF_ACCESS_TOKEN")
         if not token:
-            bt.logging.error("No Hugging Face access token found to write to the hub.")
+            raise ValueError("No Hugging Face access token found to write to the hub.")
 
         # PreTrainedModel.save_pretrained only saves locally
         commit_info = model.pt_model.push_to_hub(
@@ -34,6 +34,9 @@ class HuggingFaceModelStore(ModelStore):
     # TODO actually make this asynchronous with threadpools etc.
     async def retrieve_model(self, uid: int, model_id: ModelId) -> Model:
         """Retrieves a trained model from Hugging Face."""
+        if not model_id.commit:
+            raise ValueError("No Hugging Face commit id found to read from the hub.")
+
         # Transformers library can pick up a model based on the hugging face path (username/model) + rev.
         model = AutoModel.from_pretrained(
             pretrained_model_name_or_path=model_id.path + "/" + model_id.name,

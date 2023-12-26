@@ -48,7 +48,6 @@ async def test_roundtrip_model():
         path="TestPath",
         name="TestModel",
         hash="TestHash1",
-        commit="main",
     )
 
     pt_model = DistilBertModel(

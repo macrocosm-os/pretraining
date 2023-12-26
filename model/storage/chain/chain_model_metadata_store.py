@@ -27,7 +27,7 @@ class ChainModelMetadataStore(ModelMetadataStore):
     async def store_model_metadata(self, uid: int, model_id: ModelId):
         """Stores model metadata on this subnet for a specific wallet."""
         if self.wallet is None:
-            bt.logging.error("No wallet available to write to the chain.")
+            raise ValueError("No wallet available to write to the chain.")
 
         # TODO: Confirm that the hotkey matches the wallet using self.metagraph.hotkeys[uid]
         self.subtensor.commit(
