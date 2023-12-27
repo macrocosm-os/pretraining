@@ -181,32 +181,48 @@ Loading the best model on the network based on its incentive.
 python neurons/miner.py --wallet.name ... --wallet.hotkey ... --num_epochs 10 --pages_per_epoch 5 --load_best
 ```
 
-Pass the `--device` option to select which GPU to run on. 
+Pass the `--device` option to select which GPU to run on.
 
 ---
 
 ## Validating
 
-The validation script pulls runs from the wandb project and evaluates them continuously on Falcon. 
-Note: validation requires you have a working GPU which you pass via `--device`. In this version release/2.0.1 you need a GPU with atleast 20GB of RAM. 
+The validation script pulls runs from the wandb project and evaluates them continuously on Falcon.
+Note: validation requires you have a working GPU which you pass via `--device`. In this version release/2.0.1 you need a GPU with atleast 20GB of RAM.
 
 Test running validation:
 ```bash
-python neurons/validator.py 
+python neurons/validator.py
     --wallet.name YOUR_WALLET_NAME
-    --wallet.hotkey YOUR_WALLET_HOTKEY 
+    --wallet.hotkey YOUR_WALLET_HOTKEY
     --device YOUR_CUDA DEVICE
     --wandb.off
     --offline
 ```
 
-Running your validator: 
+Running your validator:
 ```bash
-python neurons/validator.py 
+python neurons/validator.py
     --wallet.name YOUR_WALLET_NAME
-    --wallet.hotkey YOUR_WALLET_HOTKEY 
+    --wallet.hotkey YOUR_WALLET_HOTKEY
     --device YOUR_CUDA DEVICE
 ```
+
+### Auto-updates
+
+It is essential to keep your validator up to date. There is a helper script which will automatically update your validator to the latest version. In order to use it, the repo
+should be initialized and have proper reference to `origin` remote - i.e. if you cloned the repo, you're all set.
+
+To run the auto-updater script, use the following command:
+```bash
+scripts/start_validator.py
+    --wallet.name YOUR_WALLET_NAME
+    --wallet.hotkey YOUR_WALLET_HOTKEY
+    --device YOUR_CUDA_DEVICE
+```
+
+For more information about the script, refer to [script docstrings](scripts/start_validator.py).
+
 ---
 
 ## Bittensor API

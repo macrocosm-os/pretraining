@@ -1,7 +1,8 @@
-bittensor
-torch
+bittensor==6.5.0
+torch==2.1.2
 transformers==4.34.1
-wandb
-rich
-matplotlib
-safetensors
+wandb==0.16.1
+rich==13.7.0
+matplotlib==3.8.2
+safetensors==0.4.1
+envparse==0.2.0
