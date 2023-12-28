@@ -17,6 +17,11 @@ To disable auto-updates, set `AUTO_UPDATE` environment variable to `0`:
 
 The script will use the same virtual environment as the one used to run it. If you want to run
 validator within virtual environment, run this auto-update script from the virtual environment.
+
+If pm2 process manager is installed and accessible (`npm install pm2`), then it will be used to
+start the validator process. However, one needs to monitor app state on his own by checking
+`pm2 list` or `pm2 monit`. If pm2 is not available, then the script will use `subprocess.Popen`
+to start the validator process.
 """
 import logging
 import os
@@ -26,13 +31,14 @@ import time
 from datetime import timedelta
 from pathlib import Path
 from shlex import split
+from shutil import which
 
 from envparse import env
 
 log = logging.getLogger(__name__)
 UPDATES_CHECK_TIME = timedelta(minutes=5)
 ROOT_DIR = Path(__file__).parent.parent
-
+PM2_ENABLED = which('pm2') is not None
 
 def get_version() -> str:
     """ Extract the version as current git commit hash """
@@ -52,15 +58,39 @@ def start_validator_process() -> subprocess.Popen:
     used to run this auto-updater.
     """
     assert sys.executable, 'Failed to get python executable'
-    validator = subprocess.Popen(
-        (sys.executable, *split("-m neurons.validator"), *sys.argv),
-        cwd=ROOT_DIR,
-        preexec_fn=os.setsid,
-    )
-    time.sleep(1)
-    if (return_code := validator.poll()) is not None:
-        raise RuntimeError('Failed to start validator process, return code: %s', return_code)
-    return validator
+    if PM2_ENABLED:
+        name = f"validator-{get_version()}"
+        log.info('Starting validator process with pm2, name: %s', name)
+        process = subprocess.Popen(
+            (
+                "pm2", "start",
+                sys.executable,
+                "--name", name,
+                "--no-autorestart",
+                "--", "-m", "neurons.validator", *sys.argv,
+            ),
+            cwd=ROOT_DIR,
+        )
+        process.pm2_name = name
+    else:
+        log.info('Starting validator process')
+        process = subprocess.Popen(
+            (sys.executable, *split("-m neurons.validator"), *sys.argv),
+            cwd=ROOT_DIR,
+            preexec_fn=os.setsid,
+        )
+        time.sleep(1)
+        if (return_code := process.poll()) is not None:
+            raise RuntimeError('Failed to start validator process, return code: %s', return_code)
+    return process
+
+
+def stop_validator_process(process: subprocess.Popen) -> None:
+    """ Stop the validator process """
+    if PM2_ENABLED:
+        subprocess.run(("pm2", "delete", process.pm2_name), cwd=ROOT_DIR, check=True)
+    elif process.poll() is None:
+        process.terminate()
 
 
 def pull_latest_version() -> None:
@@ -123,15 +153,14 @@ def main(auto_update: bool = True) -> None:
                 log.info('Upgraded to latest version: %s -> %s', current_version, latest_version)
                 upgrade_packages()
 
-                validator.terminate()
+                stop_validator_process(validator)
                 validator = start_validator_process()
                 current_version = latest_version
 
             time.sleep(UPDATES_CHECK_TIME.total_seconds())
 
     finally:
-        if validator.poll() is None:
-            validator.terminate()
+        stop_validator_process(validator)
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
