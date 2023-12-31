@@ -30,9 +30,8 @@ def get_model():
     # )
     # return GPT2LMHeadModel(config)
     config = FalconConfig(
-        num_hidden_layers=5,
-        vocab_size=50000,
-        hidden_size=640,
+        num_hidden_layers=4,
+        hidden_size=1024,
         num_attention_heads=64,
         max_position_embeddings=1024,
     )
