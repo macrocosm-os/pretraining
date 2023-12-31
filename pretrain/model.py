@@ -17,14 +17,24 @@
 # DEALINGS IN THE SOFTWARE.
 
 from transformers import GPT2Config, GPT2LMHeadModel
+from transformers import FalconConfig, FalconForCausalLM
 
 config = GPT2Config()
 
 
 def get_model():
-    config = GPT2Config(
-        n_head=10,
-        n_layer=12,
-        n_embd=760,
+    # config = GPT2Config(
+    #     n_head=10,
+    #     n_layer=12,
+    #     n_embd=760,
+    # )
+    # return GPT2LMHeadModel(config)
+    config = FalconConfig(
+        num_hidden_layers=5,
+        vocab_size=50000,
+        hidden_size=1024,
+        num_attention_heads=64,
+        max_position_embeddings=1024,
     )
-    return GPT2LMHeadModel(config)
+
+    return FalconForCausalLM(config)
