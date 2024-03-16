@@ -234,7 +234,7 @@ def get_falcon() -> str:
                     raise
 
     pages = [
-        random.randint(1, pt.dataset.SubsetFalconLoader.max_pages) for _ in range(20)
+        random.randint(1, pt.dataset.SubsetFalconLoader.max_pages) for _ in range(3)
     ]
     rows = []
     for page in pages:
@@ -255,11 +255,11 @@ def format_model_size(size: int) -> str:
 
 def run_benchmarks(args: ArgumentParser, datasets: Dict[str, str]):
     """Performs a single run of the benchmarks on the given datasets."""
-    best_model_hf, best_model_provider = get_best_model_provider(
-        args.cache_dir, args.chain_endpoint
-    )
+    # best_model_hf, best_model_provider = get_best_model_provider(
+    #     args.cache_dir, args.chain_endpoint
+    # )
     models = {
-        best_model_hf: best_model_provider,
+        # best_model_hf: best_model_provider,
         "gpt2": HuggingFaceModelProvider("gpt2", args.cache_dir),
         "gpt2-large": HuggingFaceModelProvider("gpt2-large", args.cache_dir),
         # Also run a 1.5b for comparison.
@@ -318,7 +318,7 @@ def run_benchmarks(args: ArgumentParser, datasets: Dict[str, str]):
 def main(args: ArgumentParser):
 
     datasets = {
-        "Wikitext103 (PPL)": get_wikitext103(args.cache_dir),
+        # "Wikitext103 (PPL)": get_wikitext103(args.cache_dir),
         "Falcon Refined Web (PPL)": get_falcon(),
     }
 
