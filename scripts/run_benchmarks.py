@@ -138,14 +138,16 @@ class SubnetModelProvider(ModelProvider):
         return pt.model.get_tokenizer(cache_dir=self.cache_dir)
 
 
-def get_best_model_provider(cache_dir: str) -> Tuple[str, SubnetModelProvider]:
+def get_best_model_provider(
+    cache_dir: str, chain_endpoint: str
+) -> Tuple[str, SubnetModelProvider]:
     """Returns a provider to fetch the subnets best model.
 
     Returns:
         Tuple[str, SubnetModelProvider]: A tuple containing the models' HF repo and the model provider.
     """
     metagraph = bt.metagraph(netuid=constants.SUBNET_UID)
-    subtensor = bt.subtensor("finney")
+    subtensor = bt.subtensor(chain_endpoint)
     best_uid = pt.graph.best_uid(metagraph=metagraph)
     hotkey = metagraph.hotkeys[best_uid]
 
@@ -249,7 +251,9 @@ def format_model_size(size: int) -> str:
 
 def run_benchmarks(args: ArgumentParser, datasets: Dict[str, str]):
     """Performs a single run of the benchmarks on the given datasets."""
-    best_model_hf, best_model_provider = get_best_model_provider(args.cache_dir)
+    best_model_hf, best_model_provider = get_best_model_provider(
+        args.cache_dir, args.chain_endpoint
+    )
     models = {
         best_model_hf: best_model_provider,
         "gpt2": HuggingFaceModelProvider("gpt2", args.cache_dir),
@@ -309,6 +313,7 @@ if __name__ == "__main__":
 
     parser = ArgumentParser()
     parser.add_argument("--cache_dir", type=str, default=None)
+    parser.add_argument("--chain_endpoint", type=str, default="finney")
 
     args = parser.parse_args()
 
