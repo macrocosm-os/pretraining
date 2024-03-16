@@ -55,7 +55,9 @@ def compute_ppl(
     load_start = time.time()
     bt.logging.info(f"Started loading model to device.")
     model = model.to(device)
-    bt.logging.info(f"Finished loading model to device in {time.time()- load_start}")
+    bt.logging.info(
+        f"Finished loading model to device in {round(time.time()- load_start, 2)}"
+    )
     tokenizer_start = time.time()
     bt.logging.info(f"Running tokenizer.")
     encodings = tokenizer(
@@ -63,7 +65,9 @@ def compute_ppl(
         truncation=False,
         return_tensors="pt",
     ).to(device)
-    bt.logging.info(f"Finished running tokenizer in {time.time()- load_start}")
+    bt.logging.info(
+        f"Finished running tokenizer in {round(time.time()- tokenizer_start, 2)}"
+    )
 
     loss_fct = CrossEntropyLoss(reduction="none", ignore_index=-100)
     seq_len = encodings.input_ids.size(1)
@@ -287,7 +291,7 @@ def run_benchmarks(args: ArgumentParser, datasets: Dict[str, str]):
         model = provider.get_model()
         # Should be cached and reasonably fast.
         bt.logging.info(
-            f"Finished getting model: {model_name} in {time.time()- get_model_start}"
+            f"Finished getting model: {model_name} in {round(time.time()- get_model_start, 2)}"
         )
 
         tokenizer = provider.get_tokenizer()
@@ -300,7 +304,7 @@ def run_benchmarks(args: ArgumentParser, datasets: Dict[str, str]):
                 compute_ppl(dataset, model, tokenizer, model_name=model_name)
             )
             bt.logging.info(
-                f"Finished Computing PPL: {ppls[dataset_name][-1]} for model: {model_name} on dataset: {dataset_name} in {time.time()- compute_start}"
+                f"Finished Computing PPL: {round(ppls[dataset_name][-1], 2)} for model: {model_name} on dataset: {dataset_name} in {round(time.time()- compute_start, 2)}"
             )
         model_size = sum(p.numel() for p in model.parameters())
         model_sizes.append(format_model_size(model_size))
