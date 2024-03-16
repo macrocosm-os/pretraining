@@ -266,13 +266,13 @@ def run_benchmarks(args: ArgumentParser, datasets: Dict[str, str]):
     #     args.cache_dir, args.chain_endpoint
     # )
     models = {
-        # best_model_hf: best_model_provider,
-        "gpt2": HuggingFaceModelProvider("gpt2", args.cache_dir),
-        "gpt2-large": HuggingFaceModelProvider("gpt2-large", args.cache_dir),
-        # Also run a 1.5b for comparison.
-        "gpt2-xl": HuggingFaceModelProvider("gpt2-xl", args.cache_dir),
-        # Also run a 3b for comparison.
-        "phi-2": HuggingFaceModelProvider("phi-2", args.cache_dir),
+        # # best_model_hf: best_model_provider,
+        # "gpt2": HuggingFaceModelProvider("gpt2", args.cache_dir),
+        # "gpt2-large": HuggingFaceModelProvider("gpt2-large", args.cache_dir),
+        # # Also run a 1.5b for comparison.
+        # "gpt2-xl": HuggingFaceModelProvider("gpt2-xl", args.cache_dir),
+        # # Also run a 3b for comparison.
+        # "phi-2": HuggingFaceModelProvider("phi-2", args.cache_dir),
         # Run Falcon 7b to start
         "falcon-7b": HuggingFaceModelProvider("falcon-7b", args.cache_dir),
         # Add Mistral and gemma after for comparison.
