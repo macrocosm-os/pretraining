@@ -41,6 +41,7 @@ def compute_ppl(
     stride: int = 512,
     max_length: int = 1024,
     device=None,
+    model_name: str = "None",
 ) -> float:
     """Returns the perplexity of the model on the given text."""
 
@@ -51,8 +52,10 @@ def compute_ppl(
     else:
         device = "cuda" if torch.cuda.is_available() else "cpu"
 
+    start = time.time()
+    bt.logging.info(f"Started loading model to device.")
     model = model.to(device)
-
+    bt.logging.info(f"Finished loading model to device in {time.time()- start}")
     encodings = tokenizer(
         text,
         truncation=False,
@@ -254,6 +257,17 @@ def run_benchmarks(args: ArgumentParser, datasets: Dict[str, str]):
         best_model_hf: best_model_provider,
         "gpt2": HuggingFaceModelProvider("gpt2", args.cache_dir),
         "gpt2-large": HuggingFaceModelProvider("gpt2-large", args.cache_dir),
+        # Also run a 1.5b for comparison.
+        "gpt2-xl": HuggingFaceModelProvider("gpt2-xl", args.cache_dir),
+        # Also run a 3b for comparison.
+        "phi-2": HuggingFaceModelProvider("phi-2", args.cache_dir),
+        # Run Falcon 7b to start
+        "falcon-7b": HuggingFaceModelProvider("falcon-7b", args.cache_dir),
+        # Add Mistral and gemma after for comparison.
+        "Mistral-7B-v0.1 ": HuggingFaceModelProvider(
+            "Mistral-7B-v0.1 ", args.cache_dir
+        ),
+        "gemma-7b": HuggingFaceModelProvider("gemma-7b", args.cache_dir),
     }
 
     ppls = defaultdict(list)
@@ -261,27 +275,39 @@ def run_benchmarks(args: ArgumentParser, datasets: Dict[str, str]):
     # First compute for the standard models.
     for model_name, provider in models.items():
         bt.logging.info(f"Computing benchmarks for model: {model_name}")
+        get_model_start = time.time()
         model = provider.get_model()
+        # Should be cached and reasonably fast.
+        bt.logging.info(
+            f"Finished getting model: {model_name} in {time.time()- get_model_start}"
+        )
+
         tokenizer = provider.get_tokenizer()
         for dataset_name, dataset in datasets.items():
+            compute_start = time.time()
             bt.logging.info(
-                f"Computing PPL for model: {model_name} on dataset: {dataset_name}"
+                f"Starting Computing PPL for model: {model_name} on dataset: {dataset_name}"
             )
-            ppls[dataset_name].append(compute_ppl(dataset, model, tokenizer))
+            ppls[dataset_name].append(
+                compute_ppl(dataset, model, tokenizer, model_name=model_name)
+            )
+            bt.logging.info(
+                f"Finished Computing PPL for model: {model_name} on dataset: {dataset_name} in {time.time()- compute_start}"
+            )
         model_size = sum(p.numel() for p in model.parameters())
         model_sizes.append(format_model_size(model_size))
         del model
         del tokenizer
 
     # Log to wandb.
-    wandb.login(key=WANDB_TOKEN)
-    with wandb.init(project=PROJECT, entity=ENTITY):
-        table = wandb.Table(
-            dataframe=pd.DataFrame(
-                {"Model": models.keys(), "Size": model_sizes, **ppls}
-            )
-        )
-        wandb.log({"benchmarks": table})
+    # wandb.login(key=WANDB_TOKEN)
+    # with wandb.init(project=PROJECT, entity=ENTITY):
+    #     table = wandb.Table(
+    #         dataframe=pd.DataFrame(
+    #             {"Model": models.keys(), "Size": model_sizes, **ppls}
+    #         )
+    #     )
+    #     wandb.log({"benchmarks": table})
 
 
 def main(args: ArgumentParser):
