@@ -150,6 +150,7 @@ def get_best_model_provider(
         Tuple[str, SubnetModelProvider]: A tuple containing the models' HF repo and the model provider.
     """
     metagraph = bt.metagraph(netuid=constants.SUBNET_UID)
+    bt.logging.info(f"Connecting to subtensor on chain endpoint: {chain_endpoint}")
     subtensor = bt.subtensor(chain_endpoint)
     best_uid = pt.graph.best_uid(metagraph=metagraph)
     hotkey = metagraph.hotkeys[best_uid]
