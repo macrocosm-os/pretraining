@@ -38,8 +38,8 @@ def compute_ppl(
     text,
     model: AutoModelForCausalLM,
     tokenizer: AutoTokenizer,
-    stride: int = 512,
-    max_length: int = 1024,
+    stride: int = 2048,
+    max_length: int = 2048,
     device=None,
     model_name: str = "None",
 ) -> float:
@@ -52,15 +52,18 @@ def compute_ppl(
     else:
         device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    start = time.time()
+    load_start = time.time()
     bt.logging.info(f"Started loading model to device.")
     model = model.to(device)
-    bt.logging.info(f"Finished loading model to device in {time.time()- start}")
+    bt.logging.info(f"Finished loading model to device in {time.time()- load_start}")
+    tokenizer_start = time.time()
+    bt.logging.info(f"Running tokenizer.")
     encodings = tokenizer(
         text,
         truncation=False,
         return_tensors="pt",
     ).to(device)
+    bt.logging.info(f"Finished running tokenizer in {time.time()- load_start}")
 
     loss_fct = CrossEntropyLoss(reduction="none", ignore_index=-100)
     seq_len = encodings.input_ids.size(1)
@@ -297,7 +300,7 @@ def run_benchmarks(args: ArgumentParser, datasets: Dict[str, str]):
                 compute_ppl(dataset, model, tokenizer, model_name=model_name)
             )
             bt.logging.info(
-                f"Finished Computing PPL: {ppls[dataset_name]} for model: {model_name} on dataset: {dataset_name} in {time.time()- compute_start}"
+                f"Finished Computing PPL: {ppls[dataset_name][-1]} for model: {model_name} on dataset: {dataset_name} in {time.time()- compute_start}"
             )
         model_size = sum(p.numel() for p in model.parameters())
         model_sizes.append(format_model_size(model_size))
