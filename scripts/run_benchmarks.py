@@ -292,7 +292,7 @@ def run_benchmarks(args: ArgumentParser, datasets: Dict[str, str]):
                 compute_ppl(dataset, model, tokenizer, model_name=model_name)
             )
             bt.logging.info(
-                f"Finished Computing PPL for model: {model_name} on dataset: {dataset_name} in {time.time()- compute_start}"
+                f"Finished Computing PPL: {ppls[dataset_name]} for model: {model_name} on dataset: {dataset_name} in {time.time()- compute_start}"
             )
         model_size = sum(p.numel() for p in model.parameters())
         model_sizes.append(format_model_size(model_size))
