@@ -273,13 +273,16 @@ def run_benchmarks(args: ArgumentParser, datasets: Dict[str, str]):
         # "gpt2-xl": HuggingFaceModelProvider("gpt2-xl", args.cache_dir),
         # # Also run a 3b for comparison.
         # "phi-2": HuggingFaceModelProvider("microsoft/phi-2", args.cache_dir),
+        # NOTE: running 7b models doesn't seem to work in parallel. Need to restart process between.
+        # Otherwise they run into memory issues. Not sure if the del model handles that properly.
         # # Run Falcon 7b to start
-        # "falcon-7b": HuggingFaceModelProvider("tiiuae/falcon-7b", args.cache_dir),
+        "falcon-7b": HuggingFaceModelProvider("tiiuae/falcon-7b", args.cache_dir),
         # Add Mistral and gemma after for comparison.
         "Mistral-7B-v0.1 ": HuggingFaceModelProvider(
             "mistralai/Mistral-7B-v0.1", args.cache_dir
         ),
-        "gemma-7b": HuggingFaceModelProvider("google/gemma-7b", args.cache_dir),
+        # Gemma is gated, need to share contact info and such.
+        # "gemma-7b": HuggingFaceModelProvider("google/gemma-7b", args.cache_dir),
     }
 
     ppls = defaultdict(list)
