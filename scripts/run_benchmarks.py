@@ -295,9 +295,12 @@ def run_benchmarks(args: ArgumentParser, datasets: Dict[str, str]):
         bt.logging.info(f"Computing benchmarks for model: {model_name}")
         get_model_start = time.time()
         model = provider.get_model()
+        model_size = sum(p.numel() for p in model.parameters())
+        model_sizes.append(format_model_size(model_size))
+
         # Should be cached and reasonably fast.
         bt.logging.info(
-            f"Finished getting model: {model_name} in {round(time.time()- get_model_start, 2)}"
+            f"Finished getting model: {model_name} of size {model_size} in {round(time.time()- get_model_start, 2)}"
         )
 
         tokenizer = provider.get_tokenizer()
