@@ -104,3 +104,5 @@ sample_min = 10
 sample_max = 25
 # validator incentive threshold to prioritize updates. All incentives add up to 1.
 update_priority_incentive_threshold = 0.01
+# time required between updates to the chain
+chain_update_cadence = dt.timedelta(minutes=20)
