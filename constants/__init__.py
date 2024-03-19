@@ -99,10 +99,6 @@ n_eval_pages = 24
 # validator eval batch size.
 batch_size = 1
 # validator eval batch min to keep for next loop.
-sample_min = 6
+sample_min = 10
 # validator eval batch max. Difference from min is room to eval newly uploaded models.
-sample_max = 14
-# validator incentive threshold to prioritize updates. All incentives add up to 1.
-update_priority_incentive_threshold = 0.01
-# time required between updates to the chain
-chain_update_cadence = dt.timedelta(minutes=20)
+sample_max = 25
