@@ -352,6 +352,10 @@ class Validator:
         uid_last_checked_sequential = dict()
         # Track how recently we updated each uid from incentives.
         uid_last_checked_incentive = dict()
+        # Track how recently we updated each uid from sequential iteration.
+        uid_last_checked_sequential = dict()
+        # Track how recently we updated each uid from incentives.
+        uid_last_checked_incentive = dict()
 
         # The below loop iterates across all miner uids and checks to see
         # if they should be updated.
@@ -381,6 +385,7 @@ class Validator:
 
                 # First check for any uids with incentives above threshold on the chain.
                 # This will catch updates to current best models and models other valis have incentivized faster.
+                incentives = None
                 with self.metagraph_lock:
                     incentives = self.metagraph.I
 
@@ -390,40 +395,43 @@ class Validator:
                         incentive.item()
                         >= constants.update_priority_incentive_threshold
                     ):
-                        # Confirm that we haven't checked it within the chain update cadence in this path.
+                        # Confirm that we haven't checked it in the last 30 minutes in this path.
                         time_diff = (
                             dt.datetime.now() - uid_last_checked_incentive[uid]
                             if uid in uid_last_checked_incentive
-                            else constants.chain_update_cadence  # Default to being stale enough to check again.
+                            else dt.timedelta(
+                                minutes=30
+                            )  # Default to being stale enough to check again.
                         )
-                        if time_diff >= constants.chain_update_cadence:
+                        if time_diff >= dt.timedelta(minutes=30):
                             # Check this uid next and update that we have checked it in this path..
                             next_uid = uid
                             uid_last_checked_incentive[uid] = dt.datetime.now()
                             break
 
                 # Then iterate sequentially for new models.
-                # In this case if we have seen the uid in chain update cadence we have seen all of them and should wait.
+                # In this case if we have seen the uid in the last 5 minutes we have seen all of them and should wait.
                 if next_uid is None:
                     next_uid = next(self.miner_iterator)
 
-                    # Confirm that we haven't checked it in the chain update cadence
+                    # Confirm that we haven't checked it in the last 5 minutes.
                     time_diff = (
                         dt.datetime.now() - uid_last_checked_sequential[next_uid]
                         if next_uid in uid_last_checked_sequential
                         else None
                     )
 
-                    if time_diff and time_diff < constants.chain_update_cadence:
-                        # If we have seen it within chain update cadence then sleep until it has been at least that long.
+                    if time_diff and time_diff < dt.timedelta(minutes=5):
+                        # If we have seen it within 5 minutes then sleep until it has been at least 5 minutes.
                         time_to_sleep = (
-                            constants.chain_update_cadence - time_diff
+                            dt.timedelta(minutes=5) - time_diff
                         ).total_seconds()
                         bt.logging.trace(
-                            f"Update loop has already processed all UIDs in the last {constants.chain_update_cadence}. Sleeping {time_to_sleep} seconds."
+                            f"Update loop has already processed all UIDs in the last 5 minutes. Sleeping {time_to_sleep} seconds."
                         )
                         time.sleep(time_to_sleep)
 
+                    uid_last_checked_sequential[next_uid] = dt.datetime.now()
                     uid_last_checked_sequential[next_uid] = dt.datetime.now()
 
                 # Get their hotkey from the metagraph.

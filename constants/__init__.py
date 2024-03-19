@@ -102,3 +102,5 @@ batch_size = 1
 sample_min = 10
 # validator eval batch max. Difference from min is room to eval newly uploaded models.
 sample_max = 25
+# validator incentive threshold to prioritize updates. All incentives add up to 1.
+update_priority_incentive_threshold = 0.01
