@@ -1,7 +1,7 @@
 import unittest
 from model.utils import get_model_criteria
 from constants import BLOCK_7B, ALLOWED_MODEL_TYPES_1, ALLOWED_MODEL_TYPES_2
-from model.data import ModelCriteria
+from model.data import ModelCriteria, TokenizerIdentifier
 
 
 class TestModelUtils(unittest.TestCase):
@@ -11,6 +11,7 @@ class TestModelUtils(unittest.TestCase):
         max_model_bytes=5 * 1024 * 1024 * 1024,
         max_model_parameters=772_000_000,
         allowed_model_types=ALLOWED_MODEL_TYPES_1,
+        tokenizer_identifier=TokenizerIdentifier.DISTILGPT_2,
     )
     MODEL_CRITERIA_7B = ModelCriteria(
         sequence_length=8192,
@@ -18,6 +19,7 @@ class TestModelUtils(unittest.TestCase):
         max_model_bytes=15 * 1024 * 1024 * 1024,
         max_model_parameters=6_900_000_000,
         allowed_model_types=ALLOWED_MODEL_TYPES_2,
+        tokenizer_identifier=TokenizerIdentifier.GPT3_5_TURBO_16K,
     )
     model_criteria_cases = [
         (2_405_920, MODEL_CRITERIA_772M),

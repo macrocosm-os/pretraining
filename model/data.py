@@ -1,4 +1,5 @@
 import dataclasses
+from enum import IntEnum
 from typing import Any, ClassVar, Dict, Optional, Type
 from transformers import PreTrainedModel
 from pydantic import BaseModel, Field, PositiveInt
@@ -70,6 +71,13 @@ class ModelMetadata(BaseModel):
     )
 
 
+class TokenizerIdentifier(IntEnum):
+    """Identifiers the tokenizer to use. This may mean different tokenizers or different implementations."""
+
+    DISTILGPT_2 = 1
+    GPT3_5_TURBO_16K = 2
+
+
 @dataclasses.dataclass()
 class ModelCriteria:
     """Collection of criteria that are relevant for interacting with models in the subnet."""
@@ -88,3 +96,6 @@ class ModelCriteria:
 
     # Allowed model types.
     allowed_model_types: dict[type]
+
+    # Tokenizer to use.
+    tokenizer_identifier: TokenizerIdentifier

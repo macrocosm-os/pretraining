@@ -11,7 +11,7 @@ from transformers import (
     PhiForCausalLM,
     GemmaForCausalLM,
 )
-from model.data import ModelCriteria
+from model.data import ModelCriteria, TokenizerIdentifier
 
 # ---------------------------------
 # Project Constants.
@@ -31,7 +31,7 @@ WANDB_PROJECT = "pretraining-subnet"
 SUBNET_UID = 9
 # The root directory of this project.
 ROOT_DIR = Path(__file__).parent.parent
-# Block at which 7b models, 8192 sequence lengths, bfloat16, and flash attention are used.
+# Block at which 7b models, 8192 sequence lengths, new tokenizer, bfloat16, and flash attention are used.
 BLOCK_7B = 2_735_661
 SEQUENCE_LENGTH_1 = 1024
 SEQUENCE_LENGTH_2 = 8192
@@ -64,6 +64,7 @@ MODEL_CRITERIA_BY_BLOCK = [
             max_model_bytes=5 * 1024 * 1024 * 1024,
             max_model_parameters=772_000_000,
             allowed_model_types=ALLOWED_MODEL_TYPES_1,
+            tokenizer_identifier=TokenizerIdentifier.DISTILGPT_2,
         ),
     ),
     (
@@ -74,6 +75,7 @@ MODEL_CRITERIA_BY_BLOCK = [
             max_model_bytes=15 * 1024 * 1024 * 1024,
             max_model_parameters=6_900_000_000,
             allowed_model_types=ALLOWED_MODEL_TYPES_2,
+            tokenizer_identifier=TokenizerIdentifier.GPT3_5_TURBO_16K,
         ),
     ),
 ]

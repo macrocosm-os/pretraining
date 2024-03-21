@@ -140,7 +140,7 @@ def check_for_reasonable_output(
 
 
 def compute_losses(
-    model, batches: typing.List[torch.Tensor], device: str, sequence_length: int
+    model, batches: typing.List[torch.Tensor], device: str
 ) -> typing.List[float]:
     """
     Computes the losses for a given model on provided batches.
@@ -149,7 +149,6 @@ def compute_losses(
         model (torch.nn.Module): The model for which losses are to be computed.
         batches (dict): A list of batches.
         device (str): The device to use for computation (e.g., 'cpu', 'gpu').
-        sequence_length: Sequence length to truncate batches to.
 
     Returns:
         dict: A dictionary with page indices as keys and lists of loss values as values.
@@ -166,7 +165,7 @@ def compute_losses(
     if not check_for_reasonable_output(
         model, falcon_token_inputs_1, falcon_token_inputs_2
     ):
-        return [math.inf for _ in batches]
+        return [math.inf for _ in range(len(batches))]
 
     # Everything looks good! Continue to computing actual losses.
 
@@ -174,10 +173,7 @@ def compute_losses(
     losses = []
     for batch in batches:
         try:
-            # Each batch is a tensor(1, max_sequence_length) from the falcon dataset loader.
-            # We truncate the batch to the appropriate sequence length for the model here.
-            batch_truncated = batch[:, :sequence_length]
-            inputs = batch_truncated.to(device)
+            inputs = batch.to(device)
             logits = model(inputs).logits
 
             shift_logits = logits[..., :-1, :].contiguous()

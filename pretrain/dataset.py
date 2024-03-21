@@ -23,15 +23,17 @@ from torch.utils.data import IterableDataset
 from transformers import AutoTokenizer
 import time
 
-model_name = "distilgpt2"
-tokenizer = AutoTokenizer.from_pretrained(model_name)
-tokenizer.pad_token = tokenizer.eos_token
-
 
 class SubsetFalconLoader(IterableDataset):
     max_pages: int = 968000015
 
-    def __init__(self, batch_size, sequence_length, pages: typing.List[int]):
+    def __init__(
+        self,
+        batch_size,
+        sequence_length,
+        pages: typing.List[int],
+        tokenizer: AutoTokenizer,
+    ):
         self.batch_size = batch_size
         self.sequence_length = sequence_length
         self.num_rows_per_page = 100

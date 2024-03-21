@@ -10,7 +10,7 @@ import wandb
 import torch
 import random
 from tqdm import tqdm
-from model.data import ModelId
+from model.data import ModelId, ModelMetadata, TokenizerIdentifier
 from model.storage.chain.chain_model_metadata_store import ChainModelMetadataStore
 from model.storage.hugging_face.hugging_face_model_store import HuggingFaceModelStore
 import pretrain as pt
@@ -24,6 +24,7 @@ import pandas as pd
 from dotenv import load_dotenv
 import bittensor as bt
 import constants
+import model.utils as model_utils
 
 from pretrain.graph import best_uid
 
@@ -125,16 +126,27 @@ class HuggingFaceModelProvider(ModelProvider):
 class SubnetModelProvider(ModelProvider):
     """Provides models from the subnet."""
 
-    def __init__(self, model_id: ModelId, cache_dir: str):
-        self.model_id = model_id
+    def __init__(self, model_metadata: ModelMetadata, cache_dir: str):
+        self.model_metadata = model_metadata
         self.cache_dir = cache_dir
 
     def get_model(self) -> AutoModelForCausalLM:
         store = HuggingFaceModelStore()
-        model = asyncio.run(store.download_model(self.model_id, self.cache_dir))
+        model = asyncio.run(
+            store.download_model(self.model_metadata.id, self.cache_dir)
+        )
         return model.pt_model
 
     def get_tokenizer(self) -> AutoTokenizer:
+        # Note that AutoTokenizer maps to either PretrainedTokenizer | PretrainedTokenizerFast.
+        # Both methods return a type that corresponds to one of those.
+        if (
+            model_utils.get_model_criteria(
+                self.model_metadata.block
+            ).tokenizer_identifier
+            == TokenizerIdentifier.DISTILGPT_2
+        ):
+            return pt.model.get_old_tokenizer(cache_dir=self.cache_dir)
         return pt.model.get_tokenizer(cache_dir=self.cache_dir)
 
 
@@ -156,7 +168,7 @@ def get_best_model_provider(cache_dir: str) -> Tuple[str, SubnetModelProvider]:
 
     return (
         f"{metadata.id.namespace}/{metadata.id.name}",
-        SubnetModelProvider(metadata.id, cache_dir),
+        SubnetModelProvider(metadata, cache_dir),
     )
 
 
