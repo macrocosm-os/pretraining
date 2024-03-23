@@ -285,9 +285,9 @@ def run_benchmarks(args: ArgumentParser, datasets: Dict[str, str]):
         # # Run Falcon 7b to start
         # "falcon-7b": HuggingFaceModelProvider("tiiuae/falcon-7b", args.cache_dir),
         # Add Mistral and gemma after for comparison.
-        "Mistral-7B-v0.1 ": HuggingFaceModelProvider(
-            "mistralai/Mistral-7B-v0.1", args.cache_dir
-        ),
+        # "Mistral-7B-v0.1 ": HuggingFaceModelProvider(
+        #    "mistralai/Mistral-7B-v0.1", args.cache_dir
+        # ),
         # Gemma is gated, need to share contact info and such.
         "gemma-7b": HuggingFaceModelProvider("google/gemma-7b", args.cache_dir),
     }
