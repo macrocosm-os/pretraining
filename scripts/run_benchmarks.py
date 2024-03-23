@@ -15,7 +15,7 @@ from model.storage.chain.chain_model_metadata_store import ChainModelMetadataSto
 from model.storage.hugging_face.hugging_face_model_store import HuggingFaceModelStore
 import pretrain as pt
 from datasets import load_dataset
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers import GPT2TokenizerFast, AutoModelForCausalLM
 from torch.nn import CrossEntropyLoss
 from collections import defaultdict
 import os
@@ -37,7 +37,7 @@ WANDB_TOKEN = os.getenv("WANDB_API_KEY")
 def compute_ppl(
     text,
     model: AutoModelForCausalLM,
-    tokenizer: AutoTokenizer,
+    tokenizer: GPT2TokenizerFast,
     stride: int = 8192,
     max_length: int = 8192,
     device=None,
@@ -112,7 +112,7 @@ class ModelProvider(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def get_tokenizer(self) -> AutoTokenizer:
+    def get_tokenizer(self) -> GPT2TokenizerFast:
         pass
 
 
@@ -131,8 +131,8 @@ class HuggingFaceModelProvider(ModelProvider):
             attn_implementation="flash_attention_2",
         )
 
-    def get_tokenizer(self) -> AutoTokenizer:
-        return AutoTokenizer.from_pretrained(
+    def get_tokenizer(self) -> GPT2TokenizerFast:
+        return GPT2TokenizerFast.from_pretrained(
             "Xenova/gpt-3.5-turbo", cache_dir=self.cache_dir
         )
 
