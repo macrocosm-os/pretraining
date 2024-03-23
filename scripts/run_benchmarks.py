@@ -246,7 +246,7 @@ def get_falcon() -> str:
                     raise
 
     pages = [
-        random.randint(1, pt.dataset.SubsetFalconLoader.max_pages) for _ in range(3)
+        random.randint(1, pt.dataset.SubsetFalconLoader.max_pages) for _ in range(24)
     ]
     rows = []
     for page in pages:
