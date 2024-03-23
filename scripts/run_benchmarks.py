@@ -149,8 +149,10 @@ class SubnetModelProvider(ModelProvider):
         model = asyncio.run(store.download_model(self.model_id, self.cache_dir))
         return model.pt_model
 
-    def get_tokenizer(self) -> AutoTokenizer:
-        return pt.model.get_tokenizer(cache_dir=self.cache_dir)
+    def get_tokenizer(self) -> GPT2TokenizerFast:
+        return GPT2TokenizerFast.from_pretrained(
+            "Xenova/gpt-3.5-turbo", cache_dir=self.cache_dir
+        )
 
 
 def get_best_model_provider(
