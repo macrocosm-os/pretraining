@@ -17,8 +17,7 @@ class MinerIterator:
         self.miner_uids = sorted(copy.deepcopy(miner_uids))
         # Start the index at a random position. This helps ensure that miners with high UIDs aren't penalized if
         # the validator restarts frequently.
-        # Temporarily hard code to start at 200 to more quickly restart on the relevant models.
-        self.index = 200
+        self.index = random.randint(0, len(self.miner_uids) - 1)
         self.lock = threading.Lock()
 
     def __iter__(self):

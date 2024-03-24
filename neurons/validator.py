@@ -686,7 +686,7 @@ class Validator:
                                 batches_to_use,
                                 self.config.device,
                             ),
-                            ttl=240,
+                            ttl=360,
                             mode="spawn",
                         )
                     del model_i
