@@ -38,8 +38,8 @@ def compute_ppl(
     text,
     model: AutoModelForCausalLM,
     tokenizer: GPT2TokenizerFast,
-    stride: int = 8192,
-    max_length: int = 8192,
+    stride: int = 4096,
+    max_length: int = 4096,
     device=None,
     model_name: str = "None",
 ) -> float:
