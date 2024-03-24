@@ -38,8 +38,8 @@ def compute_ppl(
     text,
     model: AutoModelForCausalLM,
     tokenizer: GPT2TokenizerFast,
-    stride: int = 4096,
-    max_length: int = 4096,
+    stride: int = 8192,
+    max_length: int = 8192,
     device=None,
     model_name: str = "None",
 ) -> float:
@@ -289,7 +289,9 @@ def run_benchmarks(args: ArgumentParser, datasets: Dict[str, str]):
         #    "mistralai/Mistral-7B-v0.1", args.cache_dir
         # ),
         # Gemma is gated, need to share contact info and such.
-        "gemma-7b": HuggingFaceModelProvider("google/gemma-7b", args.cache_dir),
+        # "gemma-7b": HuggingFaceModelProvider("google/gemma-7b", args.cache_dir),
+        # Something that supports at least 8k context.
+        "Qwen-7b": HuggingFaceModelProvider("Qwen/Qwen1.5-7B", args.cache_dir),
     }
 
     ppls = defaultdict(list)
