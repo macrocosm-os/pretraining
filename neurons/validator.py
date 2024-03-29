@@ -225,6 +225,11 @@ class Validator:
                     f"Because the validator updated, deleting {self.tracker_filepath} so everything is re-evaluated."
                 )
                 os.remove(self.tracker_filepath)
+            if os.path.exists(self.weights_filepath):
+                bt.logging.info(
+                    f"Because the validator updated, deleting {self.weights_filepath} so everything is re-evaluated."
+                )
+                os.remove(self.weights_filepath)
 
         # Initialize the weights.
         if not os.path.exists(self.weights_filepath):
