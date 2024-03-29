@@ -57,6 +57,7 @@ class Validator:
     TRACKER_FILENAME = "model_tracker_2.pickle"
     UIDS_FILENAME = "uids_2.pickle"
     VERSION_FILENAME = "version.txt"
+    WEIGHTS_FILENAME = "weights.pickle"
 
     @staticmethod
     def config():
@@ -200,6 +201,7 @@ class Validator:
         self.uids_filepath = os.path.join(state_dir, Validator.UIDS_FILENAME)
         self.tracker_filepath = os.path.join(state_dir, Validator.TRACKER_FILENAME)
         self.version_filepath = os.path.join(state_dir, Validator.VERSION_FILENAME)
+        self.weights_filepath = os.path.join(state_dir, Validator.WEIGHTS_FILENAME)
 
         # Perform a one-time migration of the state files from the old path to the new path
         self.maybe_migrate_state_files()
@@ -224,6 +226,18 @@ class Validator:
                 )
                 os.remove(self.tracker_filepath)
 
+        # Initialize the weights.
+        if not os.path.exists(self.weights_filepath):
+            bt.logging.warning("No weights state file found. Starting from scratch.")
+        else:
+            try:
+                # Torch.load uses pickle under the hood but handles tensors better.
+                self.weights = torch.load(self.weights_filepath)
+            except Exception as e:
+                bt.logging.warning(
+                    f"Failed to load weights state. Reason: {e}. Starting from scratch."
+                )
+
         # Initialize the model tracker.
         if not os.path.exists(self.tracker_filepath):
             bt.logging.warning("No tracker state file found. Starting from scratch.")
@@ -247,9 +261,14 @@ class Validator:
                     uids.append(self.metagraph.hotkeys.index(hotkey))
             self.uids_to_eval = set(uids)
         else:
-            with open(self.uids_filepath, "rb") as f:
-                self.uids_to_eval = pickle.load(f)
-                self.pending_uids_to_eval = pickle.load(f)
+            try:
+                with open(self.uids_filepath, "rb") as f:
+                    self.uids_to_eval = pickle.load(f)
+                    self.pending_uids_to_eval = pickle.load(f)
+            except Exception as e:
+                bt.logging.warning(
+                    f"Failed to load uids to eval state. Reason: {e}. Starting from scratch."
+                )
 
         # Setup a miner iterator to ensure we update all miners.
         # This subnet does not differentiate between miner and validators so this is passed all uids.
@@ -352,6 +371,10 @@ class Validator:
 
         # Save the state of the tracker to file.
         self.model_tracker.save_state(self.tracker_filepath)
+
+        # Save the state of the weights to file.
+        # Torch.save uses pickle under the hood but handles tensors better.
+        torch.save(self.weights, self.weights_filepath)
 
     def update_models(self):
         # Track how recently we updated each uid from sequential iteration.
