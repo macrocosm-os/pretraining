@@ -23,6 +23,7 @@ from transformers import (
     GPT2TokenizerFast,
 )
 import bittensor as bt
+import torch
 
 config = GPTNeoXConfig()
 
@@ -36,6 +37,8 @@ def get_model():
         intermediate_size=6400,
         num_hidden_layers=24,
         max_position_embeddings=2048,
+        torch_dtype=torch.bfloat16,
+        attention_type="flash_attention_2",
     )
     return GPTNeoXForCausalLM(config)
 

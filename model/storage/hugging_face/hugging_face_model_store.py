@@ -8,6 +8,7 @@ from transformers import AutoModelForCausalLM
 
 from model.storage.remote_model_store import RemoteModelStore
 import constants
+import torch
 
 
 class HuggingFaceModelStore(RemoteModelStore):
@@ -20,7 +21,7 @@ class HuggingFaceModelStore(RemoteModelStore):
             raise ValueError("No Hugging Face access token found to write to the hub.")
         return os.getenv("HF_ACCESS_TOKEN")
 
-    async def upload_model(self, model: Model) -> ModelId:
+    async def upload_model(self, model: Model, use_bf16_and_flash: bool) -> ModelId:
         """Uploads a trained model to Hugging Face."""
         token = HuggingFaceModelStore.assert_access_token_exists()
 
@@ -41,12 +42,18 @@ class HuggingFaceModelStore(RemoteModelStore):
         # TODO consider skipping the redownload if a hash is already provided.
         # To get the hash we need to redownload it at a local tmp directory after which it can be deleted.
         with tempfile.TemporaryDirectory() as temp_dir:
-            model_with_hash = await self.download_model(model_id_with_commit, temp_dir)
+            model_with_hash = await self.download_model(
+                model_id_with_commit, temp_dir, use_bf16_and_flash
+            )
             # Return a ModelId with both the correct commit and hash.
             return model_with_hash.id
 
     async def download_model(
-        self, model_id: ModelId, local_path: str, model_size_limit: int = sys.maxsize
+        self,
+        model_id: ModelId,
+        local_path: str,
+        use_bf16_and_flash: bool,
+        model_size_limit: int = sys.maxsize,
     ) -> Model:
         """Retrieves a trained model from Hugging Face."""
         if not model_id.commit:
@@ -66,12 +73,23 @@ class HuggingFaceModelStore(RemoteModelStore):
             )
 
         # Transformers library can pick up a model based on the hugging face path (username/model) + rev.
-        model = AutoModelForCausalLM.from_pretrained(
-            pretrained_model_name_or_path=repo_id,
-            revision=model_id.commit,
-            cache_dir=local_path,
-            use_safetensors=True,
-        )
+        model = None
+        if use_bf16_and_flash:
+            model = AutoModelForCausalLM.from_pretrained(
+                pretrained_model_name_or_path=repo_id,
+                revision=model_id.commit,
+                cache_dir=local_path,
+                use_safetensors=True,
+                torch_dtype=torch.bfloat16,
+                attn_implementation="flash_attention_2",
+            )
+        else:
+            model = AutoModelForCausalLM.from_pretrained(
+                pretrained_model_name_or_path=repo_id,
+                revision=model_id.commit,
+                cache_dir=local_path,
+                use_safetensors=True,
+            )
 
         # Get the directory the model was stored to.
         model_dir = utils.get_hf_download_path(local_path, model_id)

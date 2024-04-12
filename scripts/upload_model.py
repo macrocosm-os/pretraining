@@ -9,7 +9,6 @@ Prerequisites:
    3. Your miner is registered
 """
 
-
 import asyncio
 import os
 import argparse
@@ -47,6 +46,11 @@ def get_config():
         default=constants.SUBNET_UID,
         help="The subnet UID.",
     )
+    parser.add_argument(
+        "--pre_7b_block",
+        action="store_true",
+        help="If provided, upload a model without using bfloat16 and flash attention 2.",
+    )
 
     # Include wallet and logging arguments from bittensor
     bt.wallet.add_args(parser)
@@ -72,7 +76,10 @@ async def main(config: bt.config):
     HuggingFaceModelStore.assert_access_token_exists()
 
     # Load the model from disk and push it to the chain and Hugging Face.
-    model = pt.mining.load_local_model(config.load_model_dir)
+    use_bf16_and_flash = not config.pre_7b_block
+    model = pt.mining.load_local_model(
+        config.load_model_dir, use_bf16_and_flash=use_bf16_and_flash
+    )
     await pt.mining.push(model, config.hf_repo_id, wallet)
 
 

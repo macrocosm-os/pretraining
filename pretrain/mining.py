@@ -32,6 +32,7 @@ import pretrain as pt
 from safetensors.torch import load_model
 
 from utilities import utils
+import torch
 
 
 def model_path(base_dir: str, run_id: str) -> str:
@@ -48,6 +49,7 @@ async def push(
     retry_delay_secs: int = 60,
     metadata_store: Optional[ModelMetadataStore] = None,
     remote_model_store: Optional[RemoteModelStore] = None,
+    use_bf16_and_flash=True,
 ):
     """Pushes the model to Hugging Face and publishes it on the chain for evaluation by validators.
 
@@ -59,6 +61,7 @@ async def push(
         metadata_store (Optional[ModelMetadataStore]): The metadata store. If None, defaults to writing to the
             chain.
         remote_model_store (Optional[RemoteModelStore]): The remote model store. If None, defaults to writing to HuggingFace
+        use_bf16_and_flash (bool): If the model should be uploaded using bfloat16 and flash attention 2.
     """
     bt.logging.info("Pushing model")
 
@@ -71,7 +74,9 @@ async def push(
     # First upload the model to HuggingFace.
     namespace, name = utils.validate_hf_repo_id(repo)
     model_id = ModelId(namespace=namespace, name=name)
-    model_id = await remote_model_store.upload_model(Model(id=model_id, pt_model=model))
+    model_id = await remote_model_store.upload_model(
+        Model(id=model_id, pt_model=model), use_bf16_and_flash
+    )
 
     bt.logging.success(
         f"Uploaded model to hugging face. Now committing to the chain with model_id: {model_id}"
@@ -147,24 +152,36 @@ def load_gpt2_model(model_file: str) -> PreTrainedModel:
     return model
 
 
-def load_local_model(model_dir: str) -> PreTrainedModel:
+def load_local_model(model_dir: str, use_bf16_and_flash: bool) -> PreTrainedModel:
     """Loads a model from a directory."""
-    return AutoModelForCausalLM.from_pretrained(
-        pretrained_model_name_or_path=model_dir,
-        local_files_only=True,
-        use_safetensors=True,
-    )
+    if use_bf16_and_flash:
+        return AutoModelForCausalLM.from_pretrained(
+            pretrained_model_name_or_path=model_dir,
+            local_files_only=True,
+            use_safetensors=True,
+            torch_dtype=torch.bfloat16,
+            attn_implementation="flash_attention_2",
+        )
+    else:
+        return AutoModelForCausalLM.from_pretrained(
+            pretrained_model_name_or_path=model_dir,
+            local_files_only=True,
+            use_safetensors=True,
+        )
 
 
-async def load_best_model(download_dir: str):
+async def load_best_model(download_dir: str, use_bf16_and_flash: bool):
     """Loads the model from the best performing miner to download_dir"""
     best_uid = pt.graph.best_uid()
-    return await load_remote_model(best_uid, download_dir)
+    return await load_remote_model(
+        best_uid, download_dir, use_bf16_and_flash=use_bf16_and_flash
+    )
 
 
 async def load_remote_model(
     uid: int,
     download_dir: str,
+    use_bf16_and_flash: bool,
     metagraph: Optional[bt.metagraph] = None,
     metadata_store: Optional[ModelMetadataStore] = None,
     remote_model_store: Optional[RemoteModelStore] = None,
@@ -174,6 +191,7 @@ async def load_remote_model(
     Args:
         uid (int): The UID of the Miner who's model should be downloaded.
         download_dir (str): The directory to download the model to.
+        use_bf16_and_flash (bool): If the model should be loaded using bfloat16 and flash attention 2.
         metagraph (Optional[bt.metagraph]): The metagraph of the subnet.
         metadata_store (Optional[ModelMetadataStore]): The metadata store. If None, defaults to reading from the
         remote_model_store (Optional[RemoteModelStore]): The remote model store. If None, defaults to reading from HuggingFace
@@ -195,6 +213,6 @@ async def load_remote_model(
 
     bt.logging.success(f"Fetched model metadata: {model_metadata}")
     model: Model = await remote_model_store.download_model(
-        model_metadata.id, download_dir
+        model_metadata.id, download_dir, use_bf16_and_flash=use_bf16_and_flash
     )
     return model.pt_model

@@ -27,6 +27,7 @@ async def test_roundtrip_model():
     retrieved_model = await hf_model_store.download_model(
         model_id=model.id,
         local_path=utils.get_local_miner_dir("test-models", "hotkey0"),
+        use_bf16_and_flash=False,
     )
 
     # Check that they match.
@@ -50,6 +51,7 @@ async def test_retrieve_model():
     model = await hf_model_store.download_model(
         model_id=model_id,
         local_path=utils.get_local_miner_dir("test-models", "hotkey0"),
+        use_bf16_and_flash=False,
     )
 
     print(f"Finished retrieving the model with id: {model.id}")
@@ -70,6 +72,7 @@ async def test_retrieve_oversized_model():
         model = await hf_model_store.download_model(
             model_id=model_id,
             local_path=utils.get_local_miner_dir("test-models", "hotkey0"),
+            use_bf16_and_flash=False,
             model_size_limit=5 * 1024 * 1024 * 1024,
         )
     except ValueError as ve:
@@ -98,6 +101,7 @@ async def test_retrieve_multiple_models_for_hotkey():
     model_1 = await hf_model_store.download_model(
         model_id=model_id_1,
         local_path=utils.get_local_miner_dir("test-models", "hotkey0"),
+        use_bf16_and_flash=False,
     )
 
     expected_hash_1 = "3+voQJtkt7UCBvrLILeTz0oUE6iusGnXrCPZ3Mv664o="
@@ -108,6 +112,7 @@ async def test_retrieve_multiple_models_for_hotkey():
     model_2 = await hf_model_store.download_model(
         model_id=model_id_2,
         local_path=utils.get_local_miner_dir("test-models", "hotkey0"),
+        use_bf16_and_flash=False,
     )
     expected_hash_2 = "ZgTmR9X6YlD+ADOvbojE0JXEmAiTN/ok+QlukGXF61E="
 

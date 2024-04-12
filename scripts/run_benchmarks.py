@@ -133,7 +133,10 @@ class SubnetModelProvider(ModelProvider):
     def get_model(self) -> AutoModelForCausalLM:
         store = HuggingFaceModelStore()
         model = asyncio.run(
-            store.download_model(self.model_metadata.id, self.cache_dir)
+            # This is getting updated separately to handle newer models.
+            store.download_model(
+                self.model_metadata.id, self.cache_dir, use_bf16_and_flash=False
+            )
         )
         return model.pt_model
 

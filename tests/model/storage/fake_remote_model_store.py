@@ -10,7 +10,7 @@ class FakeRemoteModelStore(RemoteModelStore):
     def __init__(self):
         self.remote_models = dict()
 
-    async def upload_model(self, model: Model) -> ModelId:
+    async def upload_model(self, model: Model, use_bf16_and_flash: bool) -> ModelId:
         """Fake uploads a model."""
 
         # Use provided commit + hash rather than generating a new one.
@@ -19,7 +19,11 @@ class FakeRemoteModelStore(RemoteModelStore):
         return model.id
 
     async def download_model(
-        self, model_id: ModelId, local_path: str, model_size_limit: int = sys.maxsize
+        self,
+        model_id: ModelId,
+        local_path: str,
+        use_bf16_and_flash: bool,
+        model_size_limit: int = sys.maxsize,
     ) -> Model:
         """Retrieves a trained model from memory."""
 

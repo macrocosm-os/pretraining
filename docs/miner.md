@@ -144,13 +144,13 @@ import bittensor as bt
 from transformers import PreTrainedModel
 
 # Load a model from another miner.
-model: PreTrainedModel = await pt.mining.load_remote_model(uid=123, download_dir="mydir")
+model: PreTrainedModel = await pt.mining.load_remote_model(uid=123, download_dir="mydir", use_bf16_and_flash=True)
 
 # Save the model to local file.
 pt.mining.save(model, "model-foo/")
 
 # Load the model from disk.
-pt.mining.load_local_model("model-foo/")
+pt.mining.load_local_model("model-foo/", use_bf16_and_flash=True)
 
 # Publish the model for validator evaluation.
 wallet = bt.wallet()

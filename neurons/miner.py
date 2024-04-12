@@ -167,7 +167,12 @@ async def load_starting_model(
         # Get the best UID be incentive and load it.
         best_uid = pt.graph.best_uid(metagraph)
         model = await pt.mining.load_remote_model(
-            best_uid, config.model_dir, metagraph, metadata_store, remote_model_store
+            best_uid,
+            config.model_dir,
+            use_bf16_and_flash=True,
+            metagraph=metagraph,
+            metadata_store=metadata_store,
+            remote_model_store=remote_model_store,
         )
         bt.logging.success(
             f"Training with model from best uid: {best_uid}. Model={str(model)}"
@@ -180,9 +185,10 @@ async def load_starting_model(
         model = await pt.mining.load_remote_model(
             config.load_uid,
             config.model_dir,
-            metagraph,
-            metadata_store,
-            remote_model_store,
+            use_bf16_and_flash=True,
+            metagraph=metagraph,
+            metadata_store=metadata_store,
+            remote_model_store=remote_model_store,
         )
         bt.logging.success(
             f"Training with model from uid: {config.load_uid}. Model={str(model)}"
@@ -191,7 +197,10 @@ async def load_starting_model(
 
     # Check if we should load a model from a local directory.
     if config.load_model_dir:
-        model = pt.mining.load_local_model(config.load_model_dir)
+        model = pt.mining.load_local_model(
+            config.load_model_dir,
+            use_bf16_and_flash=True,
+        )
         bt.logging.success(f"Training with model from disk. Model={str(model)}")
         return model
 
@@ -372,13 +381,16 @@ async def main(config: bt.config):
                 )
 
                 # First, reload the best model from the training run.
-                model_to_upload = pt.mining.load_local_model(model_dir)
+                model_to_upload = pt.mining.load_local_model(
+                    model_dir, use_bf16_and_flash=True
+                )
                 await pt.mining.push(
                     model_to_upload,
                     config.hf_repo_id,
                     wallet,
                     metadata_store=metadata_store,
                     remote_model_store=remote_store,
+                    use_bf16_and_flash=True,
                 )
             else:
                 bt.logging.success(

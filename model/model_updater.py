@@ -53,8 +53,9 @@ class ModelUpdater:
         try:
             # Max size according to the block.
             model_size_limit = utils.get_model_criteria(metadata.block).max_model_bytes
+            use_bf16_and_flash = utils.get_model_criteria(metadata.block).optimized
             model = await self.remote_store.download_model(
-                metadata.id, path, model_size_limit
+                metadata.id, path, use_bf16_and_flash, model_size_limit
             )
         except Exception as e:
             bt.logging.trace(
