@@ -13,6 +13,7 @@ import asyncio
 import os
 import argparse
 import constants
+from model.storage.chain.chain_model_metadata_store import ChainModelMetadataStore
 from model.storage.hugging_face.hugging_face_model_store import HuggingFaceModelStore
 import pretrain as pt
 import bittensor as bt
@@ -80,7 +81,12 @@ async def main(config: bt.config):
     model = pt.mining.load_local_model(
         config.load_model_dir, use_bf16_and_flash=use_bf16_and_flash
     )
-    await pt.mining.push(model, config.hf_repo_id, wallet)
+
+    metadata_store = ChainModelMetadataStore(subtensor, wallet)
+
+    await pt.mining.push(
+        model, config.hf_repo_id, wallet, metadata_store=metadata_store
+    )
 
 
 if __name__ == "__main__":

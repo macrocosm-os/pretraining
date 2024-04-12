@@ -21,7 +21,7 @@ async def test_roundtrip_model():
     hf_model_store = HuggingFaceModelStore()
 
     # Store the model in hf getting back the id with commit and hash.
-    model.id = await hf_model_store.upload_model(model)
+    model.id = await hf_model_store.upload_model(model, use_bf16_and_flash=False)
 
     # Retrieve the model from hf.
     retrieved_model = await hf_model_store.download_model(
@@ -122,9 +122,10 @@ async def test_retrieve_multiple_models_for_hotkey():
 
 
 if __name__ == "__main__":
-    asyncio.run(test_retrieve_model())
-    # Test redownloading a model from cache.
-    asyncio.run(test_retrieve_model())
-    asyncio.run(test_roundtrip_model())
-    asyncio.run(test_retrieve_oversized_model())
-    asyncio.run(test_retrieve_multiple_models_for_hotkey())
+    asyncio.run(test_roundtrip_model_bf16())
+    # asyncio.run(test_retrieve_model())
+    # # Test redownloading a model from cache.
+    # asyncio.run(test_retrieve_model())
+    # asyncio.run(test_roundtrip_model())
+    # asyncio.run(test_retrieve_oversized_model())
+    # asyncio.run(test_retrieve_multiple_models_for_hotkey())
