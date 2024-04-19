@@ -340,14 +340,14 @@ def run_benchmarks(args: ArgumentParser, datasets: Dict[str, str], config: bt.co
         torch.cuda.empty_cache()
 
     # Log to wandb.
-    wandb.login(key=WANDB_TOKEN)
-    with wandb.init(project=PROJECT, entity=ENTITY):
-        table = wandb.Table(
-            dataframe=pd.DataFrame(
-                {"Model": models.keys(), "Size": model_sizes, **ppls}
-            )
-        )
-        wandb.log({"benchmarks": table})
+    # wandb.login(key=WANDB_TOKEN)
+    # with wandb.init(project=PROJECT, entity=ENTITY):
+    #     table = wandb.Table(
+    #         dataframe=pd.DataFrame(
+    #             {"Model": models.keys(), "Size": model_sizes, **ppls}
+    #         )
+    #     )
+    #     wandb.log({"benchmarks": table})
 
 
 def main(args: ArgumentParser, config: bt.config):
