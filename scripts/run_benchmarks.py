@@ -309,9 +309,9 @@ def run_benchmarks(args: ArgumentParser, datasets: Dict[str, str], config: bt.co
         # best_model_hf: best_model_provider,
         # skai: skai_provider,
         # lucia: lucia_provider,
-        "skai-hardcode": HuggingFaceModelProvider(
-            "skai24/mh2", args.cache_dir, sequence_length=4096, use_flash=True
-        ),
+        # "skai-hardcode": HuggingFaceModelProvider(
+        #     "skai24/mh2", args.cache_dir, sequence_length=4096, use_flash=True
+        # ),
         "lucia-hardcode": HuggingFaceModelProvider(
             "Lucia-no/subnet9_6_9B",
             args.cache_dir,
