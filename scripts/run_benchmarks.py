@@ -129,7 +129,8 @@ class HuggingFaceModelProvider(ModelProvider):
         )
 
     def get_tokenizer(self) -> AutoTokenizer:
-        return AutoTokenizer.from_pretrained(self.model_name, cache_dir=self.cache_dir)
+        # Hardcode for test models so we use bfloat16 and flash correctly.
+        return pt.model.get_tokenizer(cache_dir=self.cache_dir)
 
     def get_sequence_length(self) -> int:
         return self.sequence_length
@@ -308,6 +309,15 @@ def run_benchmarks(args: ArgumentParser, datasets: Dict[str, str], config: bt.co
         # best_model_hf: best_model_provider,
         skai: skai_provider,
         lucia: lucia_provider,
+        "skai-hardcode": HuggingFaceModelProvider(
+            "skai24/mh2", args.cache_dir, sequence_length=4096, use_flash=True
+        ),
+        "lucia-hardcode": HuggingFaceModelProvider(
+            "Lucia-no/subnet9_6_9B",
+            args.cache_dir,
+            sequence_length=4096,
+            use_flash=True,
+        ),
         # "gpt2": HuggingFaceModelProvider(
         #     "gpt2", args.cache_dir, sequence_length=1024, use_flash=False
         # ),
