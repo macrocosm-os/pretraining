@@ -278,9 +278,15 @@ def format_model_size(size: int) -> str:
 
 def run_benchmarks(args: ArgumentParser, datasets: Dict[str, str], config: bt.config):
     """Performs a single run of the benchmarks on the given datasets."""
-    best_model_hf, best_model_provider = get_best_model_provider(args.cache_dir, config)
+    # best_model_hf, best_model_provider = get_best_model_provider(args.cache_dir, config)
     models = {
-        best_model_hf: best_model_provider,
+        # best_model_hf: best_model_provider,
+        "hardcode-jonathan": HuggingFaceModelProvider(
+            "J0nathan18/7b_v1", args.cache_dir, sequence_length=4096
+        ),
+        "hardcode-lucia": HuggingFaceModelProvider(
+            "Lucia-no/subnet9_6_9B", args.cache_dir, sequence_length=4096
+        ),
         "gpt2": HuggingFaceModelProvider(
             "gpt2", args.cache_dir, sequence_length=1024, use_flash=False
         ),
