@@ -125,7 +125,8 @@ class HuggingFaceModelProvider(ModelProvider):
         return AutoModelForCausalLM.from_pretrained(
             self.model_name,
             cache_dir=self.cache_dir,
-            torch_dtype=torch.bfloat16,
+            # hack to try not using bfloat 16 to confirm error without flash.
+            # torch_dtype=torch.bfloat16,
         )
 
     def get_tokenizer(self) -> AutoTokenizer:
