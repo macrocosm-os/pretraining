@@ -314,6 +314,12 @@ def run_benchmarks(args: ArgumentParser, datasets: Dict[str, str], config: bt.co
         #     "skai24/mh2", args.cache_dir, sequence_length=4096, use_flash=True
         # ),
         "tdl-hardcode": HuggingFaceModelProvider(
+            "J0nathan18/7b_v1",
+            args.cache_dir,
+            sequence_length=4096,
+            use_flash=False,
+        ),
+        "tdl-hardcode": HuggingFaceModelProvider(
             "TdL/net9_7b_best",
             args.cache_dir,
             sequence_length=4096,
