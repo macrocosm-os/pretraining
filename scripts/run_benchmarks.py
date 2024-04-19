@@ -307,8 +307,8 @@ def run_benchmarks(args: ArgumentParser, datasets: Dict[str, str], config: bt.co
     lucia, lucia_provider = get_specific_model_provider(args.cache_dir, config, 128)
     models = {
         # best_model_hf: best_model_provider,
-        skai: skai_provider,
-        lucia: lucia_provider,
+        # skai: skai_provider,
+        # lucia: lucia_provider,
         "skai-hardcode": HuggingFaceModelProvider(
             "skai24/mh2", args.cache_dir, sequence_length=4096, use_flash=True
         ),
