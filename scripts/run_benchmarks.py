@@ -189,6 +189,29 @@ def get_best_model_provider(
     )
 
 
+def get_specific_model_provider(
+    cache_dir: str, config: bt.config, uid: int
+) -> Tuple[str, SubnetModelProvider]:
+    """Returns a provider to fetch the subnets best model.
+
+    Returns:
+        Tuple[str, SubnetModelProvider]: A tuple containing the models' HF repo and the model provider.
+    """
+    subtensor = bt.subtensor(config=config)
+    metagraph = subtensor.metagraph(netuid=constants.SUBNET_UID)
+    hotkey = metagraph.hotkeys[uid]
+
+    metagraph_store = ChainModelMetadataStore(subtensor)
+    metadata = asyncio.run(metagraph_store.retrieve_model_metadata(hotkey))
+    if metadata is None:
+        raise ValueError(f"No model metadata found for miner {uid}")
+
+    return (
+        f"{metadata.id.namespace}/{metadata.id.name}",
+        SubnetModelProvider(metadata, cache_dir),
+    )
+
+
 def get_wikitext103(cache_dir: str) -> str:
     """Returns the wikitext103 dataset.
 
@@ -279,14 +302,12 @@ def format_model_size(size: int) -> str:
 def run_benchmarks(args: ArgumentParser, datasets: Dict[str, str], config: bt.config):
     """Performs a single run of the benchmarks on the given datasets."""
     # best_model_hf, best_model_provider = get_best_model_provider(args.cache_dir, config)
+    skai, skai_provider = get_specific_model_provider(args.cache_dir, config, 159)
+    lucia, lucia_provider = get_specific_model_provider(args.cache_dir, config, 128)
     models = {
         # best_model_hf: best_model_provider,
-        "hardcode-skai": HuggingFaceModelProvider(
-            "skai24/mh2", args.cache_dir, sequence_length=4096
-        ),
-        "hardcode-lucia": HuggingFaceModelProvider(
-            "Lucia-no/subnet9_6_9B", args.cache_dir, sequence_length=4096
-        ),
+        skai: skai_provider,
+        lucia: lucia_provider,
         # "gpt2": HuggingFaceModelProvider(
         #     "gpt2", args.cache_dir, sequence_length=1024, use_flash=False
         # ),
