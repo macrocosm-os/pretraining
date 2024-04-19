@@ -316,7 +316,7 @@ def run_benchmarks(args: ArgumentParser, datasets: Dict[str, str], config: bt.co
             "TdL/net9_7b_best",
             args.cache_dir,
             sequence_length=4096,
-            use_flash=True,
+            use_flash=False,
         ),
         "lucia-hardcode": HuggingFaceModelProvider(
             "Lucia-no/subnet9_6_9B",
