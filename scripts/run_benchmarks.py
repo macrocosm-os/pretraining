@@ -10,9 +10,8 @@ import wandb
 import torch
 import random
 from tqdm import tqdm
-from model.data import ModelMetadata, TokenizerIdentifier
+from model.data import ModelMetadata
 from model.storage.chain.chain_model_metadata_store import ChainModelMetadataStore
-from model.storage.hugging_face.hugging_face_model_store import HuggingFaceModelStore
 import pretrain as pt
 from datasets import load_dataset
 from transformers import AutoTokenizer, AutoModelForCausalLM
@@ -143,22 +142,17 @@ class SubnetModelProvider(ModelProvider):
         self.cache_dir = cache_dir
 
     def get_model(self) -> AutoModelForCausalLM:
-        store = HuggingFaceModelStore()
-        model = asyncio.run(
-            store.download_model(self.model_metadata.id, self.cache_dir)
+        repo_id = self.model_metadata.id.namespace + "/" + self.model_metadata.id.name
+        return AutoModelForCausalLM.from_pretrained(
+            pretrained_model_name_or_path=repo_id,
+            revision=self.model_metadata.id.commit,
+            cache_dir=self.cache_dir,
+            use_safetensors=True,
+            torch_dtype=torch.bfloat16,
+            attn_implementation="flash_attention_2",
         )
-        return model.pt_model
 
     def get_tokenizer(self) -> AutoTokenizer:
-        # Note that AutoTokenizer maps to either PretrainedTokenizer | PretrainedTokenizerFast.
-        # Both methods return a type that corresponds to one of those.
-        if (
-            model_utils.get_model_criteria(
-                self.model_metadata.block
-            ).tokenizer_identifier
-            == TokenizerIdentifier.DISTILGPT_2
-        ):
-            return pt.model.get_old_tokenizer(cache_dir=self.cache_dir)
         return pt.model.get_tokenizer(cache_dir=self.cache_dir)
 
     def get_sequence_length(self) -> int:
@@ -281,20 +275,15 @@ def run_benchmarks(args: ArgumentParser, datasets: Dict[str, str], config: bt.co
     best_model_hf, best_model_provider = get_best_model_provider(args.cache_dir, config)
     models = {
         best_model_hf: best_model_provider,
-        "gpt2": HuggingFaceModelProvider(
-            "gpt2", args.cache_dir, sequence_length=1024, use_flash=False
-        ),
-        "gpt2-large": HuggingFaceModelProvider(
-            "gpt2-large", args.cache_dir, sequence_length=1024, use_flash=False
-        ),
-        # # Also run a 3b for comparison.
+        # Also run a 3b for comparison.
         "phi-2": HuggingFaceModelProvider(
             "microsoft/phi-2", args.cache_dir, sequence_length=2048
         ),
         "falcon-7b": HuggingFaceModelProvider(
             "tiiuae/falcon-7b", args.cache_dir, sequence_length=2048
         ),
-        # Intentionally use a sequence length of 4096, even though the model can support 32k.
+        # Intentionally use a sequence length of 4096, even though the model can support 32k to provide a more
+        # equal comparison with the subnet model.
         "Mistral-7B-v0.1 ": HuggingFaceModelProvider(
             "mistralai/Mistral-7B-v0.1", args.cache_dir, sequence_length=4096
         ),
