@@ -79,6 +79,17 @@ class Validator:
         self.subtensor = bt.subtensor(config=self.config)
         # Secondary archive subtensor to enable reading extrinsics of older blocks.
         self.archive_subtensor = bt.subtensor(network=self.config.archive_endpoint)
+
+        bt.logging.info("Checking the archive subtensor works")
+        block_data = self.archive_subtensor.substrate.get_block(block_number=2810222)
+
+        for idx, extrinsic in enumerate(block_data["extrinsics"]):
+            # Check function name first, otherwise it may not have an address
+            if (extrinsic["call"]["call_function"]["name"] == "set_commitment" and
+                extrinsic["address"] == "5HimsMbLi1n4t1hpdcmURAn2uBBqFtVKGFS7aDwK4DpB2Tvi"
+            ):
+                bt.logging.info(f"At index {idx} found extrinsic {extrinsic}")
+
         self.dendrite = bt.dendrite(wallet=self.wallet)
         self.metagraph = self.subtensor.metagraph(self.config.netuid, lite=False)
         torch.backends.cudnn.benchmark = True
