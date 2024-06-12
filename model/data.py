@@ -99,3 +99,6 @@ class ModelCriteria:
 
     # Tokenizer to use.
     tokenizer_identifier: TokenizerIdentifier
+
+    # Evaluation dataset
+    evaluation_dataset: str
