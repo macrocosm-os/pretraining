@@ -24,6 +24,79 @@ from transformers import AutoTokenizer
 import time
 
 
+class SubsetFineWebEdu2Loader(IterableDataset):
+
+    # Number of rows, read from https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu-score-2
+    max_pages: int = 11816970552
+
+    def __init__(
+        self,
+        batch_size,
+        sequence_length,
+        pages: typing.List[int],
+        tokenizer: AutoTokenizer,
+    ):
+        self.batch_size = batch_size
+        self.sequence_length = sequence_length
+        self.num_rows_per_page = 100
+        self.tokenizer = tokenizer
+        self.base_url = "https://datasets-server.huggingface.co/rows"
+        self.params = {
+            "dataset": "HuggingFaceFW/fineweb-edu-score-2",
+            # "config": "CC-MAIN-2024-10",
+            "config": "default",
+            "split": "train",
+        }
+        self.pages = pages
+        self.buffer = []
+        self.retry_limit = 10  # Number of retries
+        self.retry_delay = 5  # Seconds to wait between retries
+
+        for page in self.pages:
+            self.fetch_data_for_page(page)
+
+    def fetch_data_for_page(self, page):
+        self.params["offset"] = page
+        self.params["limit"] = self.num_rows_per_page
+        attempt = 0
+        while attempt < self.retry_limit:
+            try:
+                response = requests.get(self.base_url, params=self.params)
+                response.raise_for_status()  # This will raise an HTTPError if the HTTP request returned an unsuccessful status code
+                for row in response.json()["rows"]:
+                    content = row["row"]["content"]
+                    self.buffer += self.tokenizer(content, truncation=True)["input_ids"]
+                    self.buffer += [self.tokenizer.eos_token_id]
+                break  # If the request was successful, break out of the retry loop
+            except requests.exceptions.RequestException as e:
+                attempt += 1
+                bt.logging.warning(
+                    f"Failed to fetch data, retrying. Attempt {attempt}/{self.retry_limit}"
+                )
+                if attempt < self.retry_limit:
+                    time.sleep(self.retry_delay)  # Wait before the next retry
+                else:
+                    bt.logging.error(
+                        "Maximum retry limit reached. Unable to fetch data."
+                    )
+                    raise
+
+    def __iter__(self):
+        while len(self.buffer) >= self.sequence_length * self.batch_size:
+            batch = []
+            for _ in range(self.batch_size):
+                batch.append(torch.tensor(self.buffer[: self.sequence_length]))
+                self.buffer = self.buffer[self.sequence_length :]
+            yield torch.stack(batch)
+
+    def __next__(self):
+        batch = []
+        for _ in range(self.batch_size):
+            batch.append(torch.tensor(self.buffer[: self.sequence_length]))
+            self.buffer = self.buffer[self.sequence_length :]
+        return torch.stack(batch)
+
+
 class SubsetFalconLoader(IterableDataset):
     max_pages: int = 968000015
 
