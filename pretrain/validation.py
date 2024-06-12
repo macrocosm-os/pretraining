@@ -160,11 +160,11 @@ def compute_losses(
     # First check that model generates reasonable looking outputs.
     # Grab 100 tokens from the first two batches as 'prompts'. (1 x Seq Length tensors.)
     prompt_length = 100
-    falcon_token_inputs_1 = (batches[0][:, :prompt_length]).to(device)
-    falcon_token_inputs_2 = (batches[1][:, :prompt_length]).to(device)
+    token_inputs_1 = (batches[0][:, :prompt_length]).to(device)
+    token_inputs_2 = (batches[1][:, :prompt_length]).to(device)
 
     if not check_for_reasonable_output(
-        model, falcon_token_inputs_1, falcon_token_inputs_2, pad_token_id
+        model, token_inputs_1, token_inputs_2, pad_token_id
     ):
         return [math.inf for _ in range(len(batches))]
 
