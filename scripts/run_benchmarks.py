@@ -265,6 +265,51 @@ def get_falcon() -> str:
     return "\n\n".join(rows)
 
 
+def get_finewebedu2() -> str:
+    """Returns a random subset of text from the FineWeb Edu 2 dataset."""
+
+    def _fetch_data_for_page(page: int, max_retries: int = 5) -> List[str]:
+        params = {
+            "dataset": "HuggingFaceFW/fineweb-edu-score-2",
+            "config": "default",
+            "split": "train",
+            "offset": page,
+            "limit": 100,
+        }
+
+        attempt = 0
+        while attempt < max_retries:
+            try:
+                response = requests.get(
+                    "https://datasets-server.huggingface.co/rows",
+                    params=params,
+                    timeout=60,
+                )
+                response.raise_for_status()  # This will raise an HTTPError if the HTTP request returned an unsuccessful status code
+                return [r["row"]["content"] for r in response.json()["rows"]]
+            except requests.exceptions.RequestException:
+                attempt += 1
+                bt.logging.warning(
+                    f"Failed to fetch data, retrying. Attempt {attempt}/{max_retries}"
+                )
+                if attempt < max_retries:
+                    time.sleep(3)
+                else:
+                    bt.logging.error(
+                        "Maximum retry limit reached. Unable to fetch data."
+                    )
+                    raise
+
+    pages = [
+        random.randint(1, pt.dataset.SubsetFineWebEdu2Loader.max_pages)
+        for _ in range(20)
+    ]
+    rows = []
+    for page in pages:
+        rows.extend(_fetch_data_for_page(page))
+    return "\n\n".join(rows)
+
+
 def format_model_size(size: int) -> str:
     """Formats a model size into a human readable format."""
     if size >= 1e12:
@@ -354,6 +399,7 @@ def main(args: ArgumentParser, config: bt.config):
     datasets = {
         "Wikitext103 (PPL)": get_wikitext103(args.cache_dir),
         "Falcon Refined Web (PPL)": get_falcon(),
+        "FineWeb Edu 2": get_finewebedu2(),
     }
 
     while True:
