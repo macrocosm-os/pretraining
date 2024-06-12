@@ -31,10 +31,25 @@ WANDB_PROJECT = "pretraining-subnet"
 SUBNET_UID = 9
 # The root directory of this project.
 ROOT_DIR = Path(__file__).parent.parent
+
+# COMPETITION CHANGES
 # Block at which 7b models, 4096 sequence lengths, new tokenizer, bfloat16, and flash attention are used.
 BLOCK_7B = 2_786_061
+
+# Block at which FineWeb edu score 2 dataset is used for evaluation
+BLOCK_FW_EDU_SCORE_2 = 3_256_604
+
+# FIXING MODEL CRITERIA
+
+# Fixing sequence length
 SEQUENCE_LENGTH_1 = 1024
 SEQUENCE_LENGTH_2 = 4096
+
+# Fixing evaluation dataset
+DATASET_1 = "Falcon"
+DATASET_2 = "FineWebEdu2"
+
+
 # A mapping of block numbers to the supported model types as of that block.
 ALLOWED_MODEL_TYPES_1 = {
     GPT2LMHeadModel,
@@ -54,6 +69,8 @@ ALLOWED_MODEL_TYPES_2 = {
     PhiForCausalLM,
     GemmaForCausalLM,
 }
+
+
 # A mapping of block numbers to ModelCriteria. Must be ordered by block.
 MODEL_CRITERIA_BY_BLOCK = [
     (
@@ -65,6 +82,7 @@ MODEL_CRITERIA_BY_BLOCK = [
             max_model_parameters=186_000_000,
             allowed_model_types=ALLOWED_MODEL_TYPES_1,
             tokenizer_identifier=TokenizerIdentifier.DISTILGPT_2,
+            evaluation_dataset=DATASET_1,
         ),
     ),
     (
@@ -76,6 +94,7 @@ MODEL_CRITERIA_BY_BLOCK = [
             max_model_parameters=772_000_000,
             allowed_model_types=ALLOWED_MODEL_TYPES_1,
             tokenizer_identifier=TokenizerIdentifier.DISTILGPT_2,
+            evaluation_dataset=DATASET_1,
         ),
     ),
     (
@@ -87,6 +106,19 @@ MODEL_CRITERIA_BY_BLOCK = [
             max_model_parameters=6_900_000_000,
             allowed_model_types=ALLOWED_MODEL_TYPES_2,
             tokenizer_identifier=TokenizerIdentifier.GPT_4_TIKTOKEN,
+            evaluation_dataset=DATASET_1,
+        ),
+    ),
+    (
+        BLOCK_FW_EDU_SCORE_2,
+        ModelCriteria(
+            sequence_length=SEQUENCE_LENGTH_2,
+            optimized=True,
+            max_model_bytes=15 * 1024 * 1024 * 1024,
+            max_model_parameters=6_900_000_000,
+            allowed_model_types=ALLOWED_MODEL_TYPES_2,
+            tokenizer_identifier=TokenizerIdentifier.GPT_4_TIKTOKEN,
+            evaluation_dataset=DATASET_2,
         ),
     ),
 ]
