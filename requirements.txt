@@ -10,4 +10,4 @@ torch
 transformers==4.38.0
 wandb
 datasets
-flash-attn==2.5.5
+flash-attn

@@ -19,17 +19,16 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 from torch.nn import CrossEntropyLoss
 from collections import defaultdict
 import os
-import wandb
 import pandas as pd
 from dotenv import load_dotenv
 import bittensor as bt
 import constants
 import model.utils as model_utils
 
-load_dotenv()  # take environment variables from .env.
+load_dotenv()  # take environment variables from .env. (do not forget to add HF_TOKEN)
 
-PROJECT = "pretraining-leaderboard-data"
-ENTITY = "raofoundation"
+PROJECT = "pretraining-benchmark-data"
+#ENTITY = "raofoundation"
 WANDB_TOKEN = os.getenv("WANDB_API_KEY")
 
 
@@ -284,19 +283,22 @@ def run_benchmarks(args: ArgumentParser, datasets: Dict[str, str], config: bt.co
         "gpt2": HuggingFaceModelProvider(
             "gpt2", args.cache_dir, sequence_length=1024, use_flash=False
         ),
+
         "gpt2-large": HuggingFaceModelProvider(
             "gpt2-large", args.cache_dir, sequence_length=1024, use_flash=False
         ),
-        # # Also run a 3b for comparison.
+
+        # Also run a 3b for comparison.
         "phi-2": HuggingFaceModelProvider(
             "microsoft/phi-2", args.cache_dir, sequence_length=2048
         ),
         "falcon-7b": HuggingFaceModelProvider(
             "tiiuae/falcon-7b", args.cache_dir, sequence_length=2048
         ),
+
         # Intentionally use a sequence length of 4096, even though the model can support 32k.
         "Mistral-7B-v0.1 ": HuggingFaceModelProvider(
-            "mistralai/Mistral-7B-v0.1", args.cache_dir, sequence_length=4096
+           "mistralai/Mistral-7B-v0.1", args.cache_dir, sequence_length=4096
         ),
     }
 
@@ -339,7 +341,7 @@ def run_benchmarks(args: ArgumentParser, datasets: Dict[str, str], config: bt.co
 
     # Log to wandb.
     wandb.login(key=WANDB_TOKEN)
-    with wandb.init(project=PROJECT, entity=ENTITY):
+    with wandb.init(project=PROJECT):#, entity=ENTITY):
         table = wandb.Table(
             dataframe=pd.DataFrame(
                 {"Model": models.keys(), "Size": model_sizes, **ppls}
