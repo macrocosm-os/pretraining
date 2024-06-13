@@ -21,6 +21,7 @@ import requests
 import bittensor as bt
 from torch.utils.data import IterableDataset
 from transformers import AutoTokenizer
+from datasets import load_dataset
 import time
 
 
@@ -92,3 +93,108 @@ class SubsetFalconLoader(IterableDataset):
             batch.append(torch.tensor(self.buffer[: self.sequence_length]))
             self.buffer = self.buffer[self.sequence_length :]
         return torch.stack(batch)
+
+
+class SubsetFineWebEdu2Loader(IterableDataset):
+    """
+    A custom dataset loader for a subset of the FineWeb Edu Score 2 dataset.
+
+    Args:
+        sequence_length (int): The maximum sequence length for tokenization.
+        batch_size (int): The batch size for data loading.
+        pages (List[int]): A list of page indices to fetch from the dataset.
+        tokenizer (AutoTokenizer): The tokenizer to use for tokenization.
+        return_attention_mask (bool, optional): Whether to return attention masks along with input IDs. Defaults to False.
+    """
+
+    def __init__(
+        self,
+        sequence_length,
+        batch_size,
+        pages: typing.List[int],
+        tokenizer: AutoTokenizer,
+        return_attention_mask: bool = False,
+    ):
+        # Number of rows, read from https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu-score-2
+        self.max_pages: int = 11816970552
+        self.sequence_length = sequence_length
+        self.batch_size = batch_size
+        self.pages = pages
+        self.tokenizer = tokenizer
+        self.return_attention_mask = return_attention_mask
+
+        self.dataset = load_dataset(
+            "HuggingFaceFW/fineweb-edu-score-2", split="train", streaming=True
+        )
+
+    def fetch_pages(self):
+        """
+        Fetches the pages from the dataset based on the specified page indices.
+
+        Returns:
+            List[str]: A list of fetched pages.
+        """
+        fetched_pages = []
+        for i, sample in enumerate(self.dataset):
+            if i in self.pages:
+                fetched_pages.append(sample["text"])
+            if len(fetched_pages) == len(self.pages):
+                break
+        return fetched_pages
+
+    def tokenize_page(self, page: str) -> typing.Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Tokenizes a page using the specified tokenizer.
+
+        Args:
+            page (str): The page content to tokenize.
+
+        Returns:
+            Tuple[torch.Tensor, torch.Tensor]: The tokenized input IDs and attention mask.
+        """
+        # Tokenize the page content with padding and truncation to the specified sequence length
+        tokenized = self.tokenizer(
+            page,
+            truncation=True,
+            padding="max_length",
+            max_length=self.sequence_length,
+            return_tensors="pt",
+        )
+
+        # Extract input IDs and attention mask tensors, removing the batch dimension
+        input_ids = tokenized["input_ids"].squeeze(0)
+        attention_mask = tokenized["attention_mask"].squeeze(0)
+
+        # Ensure the tokenized sequences match the specified sequence length
+        if input_ids.size(0) != self.sequence_length:
+            if input_ids.size(0) > self.sequence_length:
+                # Truncate sequences if they exceed the maximum length
+                input_ids = input_ids[: self.sequence_length]
+                attention_mask = attention_mask[: self.sequence_length]
+            else:
+                # Pad sequences if they are shorter than the maximum length
+                padding_length = self.sequence_length - input_ids.size(0)
+                input_ids = torch.cat(
+                    [
+                        input_ids,
+                        torch.full(
+                            (padding_length,),
+                            self.tokenizer.pad_token_id,
+                            dtype=torch.long,
+                        ),
+                    ]
+                )
+                attention_mask = torch.cat(
+                    [attention_mask, torch.zeros(padding_length, dtype=torch.long)]
+                )
+
+        return input_ids, attention_mask
+
+    def __iter__(self):
+        fetched_pages = self.fetch_pages()
+        for page in fetched_pages:
+            input_ids, attention_mask = self.tokenize_page(page)
+            if self.return_attention_mask:
+                yield input_ids, attention_mask
+            else:
+                yield input_ids
