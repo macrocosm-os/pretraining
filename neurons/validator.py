@@ -525,7 +525,6 @@ class Validator:
         uid_to_block = defaultdict(lambda: math.inf)
 
         # Generate random pages for evaluation and prepare batches for each page
-        # the dataset contains >900 million pages to eval over.
 
         old_pages = [
             random.randint(1, pt.dataset.SubsetFalconLoader.max_pages)
