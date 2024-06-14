@@ -46,7 +46,7 @@ SEQUENCE_LENGTH_1 = 1024
 SEQUENCE_LENGTH_2 = 4096
 
 # Fixing evaluation dataset
-DATASET_1 = "Falcon"
+DATASET_1 = "Falcon/RefinedWeb"
 DATASET_2 = "FineWebEdu2"
 
 
