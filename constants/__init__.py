@@ -47,7 +47,7 @@ SEQUENCE_LENGTH_2 = 4096
 
 # Fixing evaluation dataset
 DATASET_1 = "Falcon/RefinedWeb"
-DATASET_2 = "FineWebEdu2"
+DATASET_2 = "HF/FineWebEdu2"
 
 
 # A mapping of block numbers to the supported model types as of that block.
