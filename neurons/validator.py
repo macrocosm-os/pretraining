@@ -531,10 +531,6 @@ class Validator:
             random.randint(1, pt.dataset.SubsetFalconLoader.max_pages)
             for _ in range(self.config.pages_per_eval)
         ]
-        new_pages = [
-            random.randint(1, pt.dataset.SubsetFineWebEdu2Loader.max_pages)
-            for _ in range(self.config.pages_per_eval)
-        ]
 
         # Temporary ugliness to load the batches with both the previous tokenizer
         # and the new tokenizer. batches_old can be removed once the block is newer
@@ -558,15 +554,23 @@ class Validator:
                 tokenizer=new_tokenizer,
             )
         )
+
+
+        new_dataset = pt.dataset.SubsetFineWebEdu2Loader(
+            batch_size=constants.batch_size,
+            sequence_length=constants.SEQUENCE_LENGTH_2,
+            num_pages=self.config.pages_per_eval,
+            tokenizer=new_tokenizer,
+        )
+        
         new_batches = list(
-            pt.dataset.SubsetFineWebEdu2Loader(
-                batch_size=constants.batch_size,
-                sequence_length=constants.SEQUENCE_LENGTH_2,
-                pages=new_pages,
-                tokenizer=new_tokenizer,
-            )
+            new_dataset
         )
 
+        # This is useful for logging to wandb
+        new_pages = [f'{cfg_name}_{num_rows}_{split}' for
+                     cfg_name, num_rows, split in new_dataset.pages]
+        
         # bt.logging.debug(f"Computing losses on {uids} with pages {pages}")
 
         # Compute model losses on batches.

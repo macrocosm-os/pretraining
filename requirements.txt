@@ -1,13 +1,13 @@
 bittensor
 huggingface_hub
 matplotlib
-numpy
 pydantic==1.10
 python-dotenv
 rich
 safetensors
 torch
+numpy
 transformers==4.38.0
 wandb
 datasets
-flash-attn==2.5.5
+flash-attn

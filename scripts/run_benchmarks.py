@@ -28,8 +28,8 @@ import model.utils as model_utils
 
 load_dotenv()  # take environment variables from .env.
 
-PROJECT = "pretraining-leaderboard-data"
-ENTITY = "raofoundation"
+PROJECT = "pretraining-fineweb-test"
+#ENTITY = "raofoundation"
 WANDB_TOKEN = os.getenv("WANDB_API_KEY")
 
 
@@ -268,45 +268,10 @@ def get_falcon() -> str:
 def get_finewebedu2() -> str:
     """Returns a random subset of text from the FineWeb Edu 2 dataset."""
 
-    def _fetch_data_for_page(page: int, max_retries: int = 5) -> List[str]:
-        params = {
-            "dataset": "HuggingFaceFW/fineweb-edu-score-2",
-            "config": "default",
-            "split": "train",
-            "offset": page,
-            "limit": 100,
-        }
+    # Create a dataloader object
+    dataloader = pt.dataset.SubsetFineWebEdu2Loader()
 
-        attempt = 0
-        while attempt < max_retries:
-            try:
-                response = requests.get(
-                    "https://datasets-server.huggingface.co/rows",
-                    params=params,
-                    timeout=60,
-                )
-                response.raise_for_status()  # This will raise an HTTPError if the HTTP request returned an unsuccessful status code
-                return [r["row"]["content"] for r in response.json()["rows"]]
-            except requests.exceptions.RequestException:
-                attempt += 1
-                bt.logging.warning(
-                    f"Failed to fetch data, retrying. Attempt {attempt}/{max_retries}"
-                )
-                if attempt < max_retries:
-                    time.sleep(3)
-                else:
-                    bt.logging.error(
-                        "Maximum retry limit reached. Unable to fetch data."
-                    )
-                    raise
-
-    pages = [
-        random.randint(1, pt.dataset.SubsetFineWebEdu2Loader.max_pages)
-        for _ in range(20)
-    ]
-    rows = []
-    for page in pages:
-        rows.extend(_fetch_data_for_page(page))
+    rows = dataloader.fetch_data_to_rows(num_pages=15)
     return "\n\n".join(rows)
 
 
@@ -332,7 +297,7 @@ def run_benchmarks(args: ArgumentParser, datasets: Dict[str, str], config: bt.co
         "gpt2-large": HuggingFaceModelProvider(
             "gpt2-large", args.cache_dir, sequence_length=1024, use_flash=False
         ),
-        # # Also run a 3b for comparison.
+        # Also run a 3b for comparison.
         "phi-2": HuggingFaceModelProvider(
             "microsoft/phi-2", args.cache_dir, sequence_length=2048
         ),
@@ -384,7 +349,7 @@ def run_benchmarks(args: ArgumentParser, datasets: Dict[str, str], config: bt.co
 
     # Log to wandb.
     wandb.login(key=WANDB_TOKEN)
-    with wandb.init(project=PROJECT, entity=ENTITY):
+    with wandb.init(project=PROJECT):#, entity=ENTITY):
         table = wandb.Table(
             dataframe=pd.DataFrame(
                 {"Model": models.keys(), "Size": model_sizes, **ppls}
