@@ -12,7 +12,7 @@
 
 ---
 
-[Leaderboard](https://huggingface.co/spaces/RaoFoundation/pretraining-leaderboard) • [Discord](https://discord.gg/bittensor) • [Network](https://taostats.io/subnets/netuid-9/) • [Research](https://bittensor.com/whitepaper) 
+[Leaderboard](https://huggingface.co/spaces/macrocosm-os/pretraining-leaderboard) • [Discord](https://discord.gg/bittensor) • [Network](https://taostats.io/subnets/netuid-9/) • [Research](https://bittensor.com/whitepaper) 
 </div>
 
 ---

@@ -17,8 +17,12 @@ from model.data import ModelCriteria, TokenizerIdentifier
 # Project Constants.
 # ---------------------------------
 
-__version__ = "2.2.3"
-version_split = __version__.split(".")
+# Release
+__version__ = "3.1.5"
+
+# Validator schema version
+__validator_version__ = "2.2.2"
+version_split = __validator_version__.split(".")
 __spec_version__ = (
     (1000 * int(version_split[0]))
     + (10 * int(version_split[1]))
@@ -46,8 +50,8 @@ SEQUENCE_LENGTH_1 = 1024
 SEQUENCE_LENGTH_2 = 4096
 
 # Fixing evaluation dataset
-DATASET_1 = "Falcon"
-DATASET_2 = "FineWebEdu2"
+DATASET_1 = "Falcon/RefinedWeb"
+DATASET_2 = "HF/FineWebEdu2"
 
 
 # A mapping of block numbers to the supported model types as of that block.

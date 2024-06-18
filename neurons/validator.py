@@ -221,7 +221,7 @@ class Validator:
                 "uid": self.uid,
                 "hotkey": self.wallet.hotkey.ss58_address,
                 "run_name": run_id,
-                "version": constants.__version__,
+                "version": constants.__validator_version__,
                 "type": "validator",
             },
             allow_val_change=True,

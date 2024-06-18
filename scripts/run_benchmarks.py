@@ -19,16 +19,15 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 from torch.nn import CrossEntropyLoss
 from collections import defaultdict
 import os
-import wandb
 import pandas as pd
 from dotenv import load_dotenv
 import bittensor as bt
 import constants
 import model.utils as model_utils
 
-load_dotenv()  # take environment variables from .env.
+load_dotenv()  # take environment variables from .env. (do not forget to add HF_TOKEN)
 
-PROJECT = "pretraining-fineweb-test"
+PROJECT = "pretraining-benchmark-data"
 #ENTITY = "raofoundation"
 WANDB_TOKEN = os.getenv("WANDB_API_KEY")
 
