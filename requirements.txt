@@ -1,4 +1,4 @@
-bittensor
+bittensor==7.0.1
 huggingface_hub
 matplotlib
 pydantic==1.10

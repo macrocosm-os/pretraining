@@ -175,7 +175,21 @@ class SubsetFineWebEdu2Loader(IterableDataset):
             pages.append((config_name, page, split))
 
         return pages
-    
+
+    def get_page_names(self):
+        """
+        This is a utility function that returns the page names that were used.
+        Each page as a single string instead of a tuple
+        """
+
+        page_names = []
+        
+        if hasattr(self, 'pages'):
+            page_names = [f'{cfg_name}_{num_rows}_{split}' for
+                           cfg_name, num_rows, split in self.pages]
+            
+        return page_names
+        
     def fetch_dataset_configs(self) -> typing.Dict[str, typing.Dict]:
         """
         Fetch the different dump names, aka configs, aka samples, of the
@@ -243,7 +257,7 @@ class SubsetFalconLoader(IterableDataset):
         self,
         batch_size,
         sequence_length,
-        pages: typing.List[int],
+        num_pages: typing.List[int],
         tokenizer: AutoTokenizer,
     ):
         self.batch_size = batch_size
@@ -256,11 +270,13 @@ class SubsetFalconLoader(IterableDataset):
             "config": "default",
             "split": "train",
         }
-        self.pages = pages
+        self.num_pages = num_pages
         self.buffer = []
         self.retry_limit = 10  # Number of retries
         self.retry_delay = 5  # Seconds to wait between retries
 
+        self.pages = self.get_pages()
+        
         for page in self.pages:
             self.fetch_data_for_page(page)
 
@@ -290,6 +306,26 @@ class SubsetFalconLoader(IterableDataset):
                     )
                     raise
 
+    def get_pages(self):
+        pages = [
+            random.randint(1, self.max_pages)
+            for _ in range(self.num_pages)
+        ]
+
+        return pages
+
+    def get_page_names(self):
+        """
+        This is a utility function that returns the page names that were used.
+        Each page as a single string instead of a tuple
+        """
+        page_names = []
+        
+        if hasattr(self, 'pages'):
+            page_names = self.pages
+            
+        return page_names
+    
     def __iter__(self):
         while len(self.buffer) >= self.sequence_length * self.batch_size:
             batch = []

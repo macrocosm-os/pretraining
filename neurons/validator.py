@@ -71,6 +71,8 @@ class Validator:
     def __init__(self):
         self.config = config.validator_config()
         bt.logging(config=self.config)
+        bt.logging.set_debug()
+        bt.logging.set_trace()        
 
         bt.logging.info(f"Starting validator with config: {self.config}")
 
@@ -93,7 +95,7 @@ class Validator:
             self.new_wandb_run()
 
         # === Running args ===
-        self.weights = torch.zeros_like(self.metagraph.S)
+        self.weights = torch.zeros_like(torch.tensor(self.metagraph.S))
         self.epoch_step = 0
         self.global_step = 0
         self.last_epoch = self.metagraph.block.item()
@@ -524,55 +526,51 @@ class Validator:
         # Default to an infinite block if we can't retrieve the metadata for the miner.
         uid_to_block = defaultdict(lambda: math.inf)
 
-        # Generate random pages for evaluation and prepare batches for each page
-        # the dataset contains >900 million pages to eval over.
-
-        old_pages = [
-            random.randint(1, pt.dataset.SubsetFalconLoader.max_pages)
-            for _ in range(self.config.pages_per_eval)
-        ]
+        bt.logging.trace(f'Current block: {self.current_block}')
+        
+        # Decide on which dataset loader class to use
+        if self.current_block >= constants.BLOCK_FW_EDU_SCORE_2:
+            bt.logging.trace(f'Dataset in use: {constants.DATASET_2}.')
+            SubsetDataLoader = pt.dataset.SubsetFineWebEdu2Loader
+        else:
+            bt.logging.trace(f'Dataset in use: {constants.DATASET_1}.')            
+            SubsetDataLoader = pt.dataset.SubsetFalconLoader
 
         # Temporary ugliness to load the batches with both the previous tokenizer
         # and the new tokenizer. batches_old can be removed once the block is newer
         # than the point we allow 7B parameter models.
-        # old_tokenizer = pt.model.get_old_tokenizer(cache_dir=self.config.model_dir)
-        # batches_old = list(
-        #     pt.dataset.SubsetFalconLoader(
-        #         batch_size=constants.batch_size,
-        #         sequence_length=constants.SEQUENCE_LENGTH_1,
-        #         pages=pages,
-        #         tokenizer=old_tokenizer,
-        #     )
-        # )
 
-        new_tokenizer = pt.model.get_tokenizer(cache_dir=self.config.model_dir)
-        old_batches = list(
-            pt.dataset.SubsetFalconLoader(
+        ## First tokenizer (Prior to 7B models)
+        tokenizer_old = pt.model.get_old_tokenizer(cache_dir=self.config.model_dir)
+        dataloader_old = SubsetDataLoader(
                 batch_size=constants.batch_size,
-                sequence_length=constants.SEQUENCE_LENGTH_2,
-                pages=old_pages,
-                tokenizer=new_tokenizer,
+                sequence_length=constants.SEQUENCE_LENGTH_1,
+                num_pages=self.config.pages_per_eval,
+                tokenizer=tokenizer_old,
             )
+        
+        batches_old = list(
+            dataloader_old
         )
 
+        # This is useful for logging to wandb        
+        pages = dataloader_old.get_page_names()
 
-        new_dataset = pt.dataset.SubsetFineWebEdu2Loader(
+        ## Second tokenizer (For 7B models)
+        tokenizer_new = pt.model.get_tokenizer(cache_dir=self.config.model_dir)
+        dataloader_new = SubsetDataLoader(
             batch_size=constants.batch_size,
             sequence_length=constants.SEQUENCE_LENGTH_2,
             num_pages=self.config.pages_per_eval,
-            tokenizer=new_tokenizer,
-        )
+            tokenizer=tokenizer_new,
+            )
         
-        new_batches = list(
-            new_dataset
+        batches_new = list(
+            dataloader_new
         )
 
-        # This is useful for logging to wandb
-        new_pages = [f'{cfg_name}_{num_rows}_{split}' for
-                     cfg_name, num_rows, split in new_dataset.pages]
+        bt.logging.debug(f"Computing losses on {uids} with pages {pages}")
         
-        # bt.logging.debug(f"Computing losses on {uids} with pages {pages}")
-
         # Compute model losses on batches.
         losses_per_uid = {muid: None for muid in uids}
 
@@ -588,8 +586,8 @@ class Validator:
                 hotkey
             )
 
-            old_losses = [math.inf for _ in range(len(old_batches))]
-            new_losses = [math.inf for _ in range(len(new_batches))]
+            # This variable should be overwritten below if the model has metadata.
+            losses = [math.inf for _ in range(len(batches_new))]
 
             if model_i_metadata != None:
                 try:
@@ -601,8 +599,6 @@ class Validator:
                     optimized = criteria.optimized
                     # Use tokenizer based on block.
                     tokenizer_identifier = criteria.tokenizer_identifier
-                    # datasets to use based on block.
-                    dataset = criteria.evaluation_dataset
 
                     # Get the model locally and evaluate its loss.
                     model_i = None
@@ -616,18 +612,17 @@ class Validator:
                     with compute_loss_perf.sample():
                         # Run each computation in a subprocess so that the GPU is reset between each model.
                         batches_to_use = None
+
                         # Keeping identical behavior of getting this from eos token id.
                         # Currently we set pad token = eos token but not the ids on the get tokenizer methods.
-                        pad_token_id = new_tokenizer.eos_token_id
+                        pad_token_id = None
 
-                        if dataset == constants.DATASET_1:
-                            batches_to_use = old_batches
-                            losses = old_losses
-                            pages_to_use = old_pages
+                        if tokenizer_identifier == TokenizerIdentifier.DISTILGPT_2:
+                            batches_to_use = batches_old
+                            pad_token_id = tokenizer_old.eos_token_id
                         else:
-                            batches_to_use = new_batches
-                            losses = new_losses
-                            pages_to_use = new_pages
+                            batches_to_use = batches_new
+                            pad_token_id = tokenizer_new.eos_token_id
 
                         losses = utils.run_in_subprocess(
                             functools.partial(
@@ -658,7 +653,7 @@ class Validator:
 
         # Compute wins and win rates per uid.
         wins, win_rate = pt.validation.compute_wins(
-            uids, losses_per_uid, batches_to_use, uid_to_block
+            uids, losses_per_uid, batches_new, uid_to_block
         )
 
         # Compute softmaxed weights based on win rate.
@@ -707,7 +702,7 @@ class Validator:
         self.log_step(
             uids,
             uid_to_block,
-            pages_to_use,
+            pages,
             wins,
             win_rate,
             losses_per_uid,
@@ -818,10 +813,12 @@ class Validator:
         """Runs the validator loop, which continuously evaluates models and sets weights."""
         while True:
             try:
+                
                 while (
-                    self.metagraph.block.item() - self.last_epoch
-                    < self.config.blocks_per_epoch
+                        (self.metagraph.block.item() - self.last_epoch)
+                        < self.config.blocks_per_epoch
                 ):
+                    self.current_block = self.metagraph.block.item()                    
                     await self.try_run_step(ttl=60 * 20)
                     await self.try_sync_metagraph(ttl=60)
                     self.save_state()

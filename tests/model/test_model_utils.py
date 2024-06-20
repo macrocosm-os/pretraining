@@ -1,6 +1,6 @@
 import unittest
 from model.utils import get_model_criteria, get_hash_of_two_strings
-from constants import BLOCK_7B, BLOCK_FW_EDU_SCORE_2, ALLOWED_MODEL_TYPES_1, ALLOWED_MODEL_TYPES_2, DATASET_1, DATASET_2
+from constants import BLOCK_7B, ALLOWED_MODEL_TYPES_1, ALLOWED_MODEL_TYPES_2
 from model.data import ModelCriteria, TokenizerIdentifier
 
 
@@ -12,7 +12,6 @@ class TestModelUtils(unittest.TestCase):
         max_model_parameters=186_000_000,
         allowed_model_types=ALLOWED_MODEL_TYPES_1,
         tokenizer_identifier=TokenizerIdentifier.DISTILGPT_2,
-        evaluation_dataset=DATASET_1,
     )
     MODEL_CRITERIA_772M = ModelCriteria(
         sequence_length=1024,
@@ -21,7 +20,6 @@ class TestModelUtils(unittest.TestCase):
         max_model_parameters=772_000_000,
         allowed_model_types=ALLOWED_MODEL_TYPES_1,
         tokenizer_identifier=TokenizerIdentifier.DISTILGPT_2,
-        evaluation_dataset=DATASET_1,
     )
     MODEL_CRITERIA_7B = ModelCriteria(
         sequence_length=4096,
@@ -30,16 +28,6 @@ class TestModelUtils(unittest.TestCase):
         max_model_parameters=6_900_000_000,
         allowed_model_types=ALLOWED_MODEL_TYPES_2,
         tokenizer_identifier=TokenizerIdentifier.GPT_4_TIKTOKEN,
-        evaluation_dataset=DATASET_1,
-    )
-    MODEL_CRITERIA_FINEWEBEDU2 = ModelCriteria(
-        sequence_length=4096,
-        optimized=True,
-        max_model_bytes=15 * 1024 * 1024 * 1024,
-        max_model_parameters=6_900_000_000,
-        allowed_model_types=ALLOWED_MODEL_TYPES_2,
-        tokenizer_identifier=TokenizerIdentifier.GPT_4_TIKTOKEN,
-        evaluation_dataset=DATASET_2,
     )
     
     model_criteria_cases = [
@@ -50,9 +38,6 @@ class TestModelUtils(unittest.TestCase):
         (BLOCK_7B - 1, MODEL_CRITERIA_772M),
         (BLOCK_7B, MODEL_CRITERIA_7B),
         (BLOCK_7B + 1, MODEL_CRITERIA_7B),
-        (BLOCK_FW_EDU_SCORE_2 - 1, MODEL_CRITERIA_7B),
-        (BLOCK_FW_EDU_SCORE_2, MODEL_CRITERIA_FINEWEBEDU2),
-        (BLOCK_FW_EDU_SCORE_2 + 1, MODEL_CRITERIA_FINEWEBEDU2),
     ]
 
     def test_get_model_criteria(self):
