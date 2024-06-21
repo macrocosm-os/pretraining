@@ -545,7 +545,7 @@ class Validator:
         dataloader_old = SubsetDataLoader(
                 batch_size=constants.batch_size,
                 sequence_length=constants.SEQUENCE_LENGTH_1,
-                num_pages=self.config.pages_per_eval,
+                num_pages=self.config.pages_per_eval, # The pages will be sampled inside the object
                 tokenizer=tokenizer_old,
             )
         
@@ -561,9 +561,12 @@ class Validator:
         dataloader_new = SubsetDataLoader(
             batch_size=constants.batch_size,
             sequence_length=constants.SEQUENCE_LENGTH_2,
-            num_pages=self.config.pages_per_eval,
+            num_pages=None, # Do not automatically generate pages. They will be manually set.
             tokenizer=tokenizer_new,
             )
+
+        # Use the same pages as for models with old tokenizers
+        dataloader_new.fetch_data_for_pages(pages=dataloader_old.pages)
         
         batches_new = list(
             dataloader_new
