@@ -18,7 +18,7 @@ from model.data import ModelCriteria, TokenizerIdentifier
 # ---------------------------------
 
 # Release
-__version__ = "3.2.0"
+__version__ = "3.2.1"
 
 # Validator schema version
 __validator_version__ = "2.2.2"
@@ -43,7 +43,7 @@ ROOT_DIR = Path(__file__).parent.parent
 BLOCK_7B = 2_786_061
 
 # Block at which FineWeb edu score 2 dataset is used for evaluation
-BLOCK_FW_EDU_SCORE_2 = 3_256_604
+BLOCK_FW_EDU_SCORE_2 = 3_307_004
 
 # FIXING MODEL CRITERIA
 
