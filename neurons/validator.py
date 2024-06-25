@@ -71,8 +71,6 @@ class Validator:
     def __init__(self):
         self.config = config.validator_config()
         bt.logging(config=self.config)
-        bt.logging.set_debug()
-        bt.logging.set_trace()        
 
         bt.logging.info(f"Starting validator with config: {self.config}")
 
@@ -527,13 +525,13 @@ class Validator:
         uid_to_block = defaultdict(lambda: math.inf)
 
         bt.logging.trace(f'Current block: {self.current_block}')
-        
+
         # Decide on which dataset loader class to use
         if self.current_block >= constants.BLOCK_FW_EDU_SCORE_2:
             bt.logging.trace(f'Dataset in use: {constants.DATASET_2}.')
             SubsetDataLoader = pt.dataset.SubsetFineWebEdu2Loader
         else:
-            bt.logging.trace(f'Dataset in use: {constants.DATASET_1}.')            
+            bt.logging.trace(f'Dataset in use: {constants.DATASET_1}.')
             SubsetDataLoader = pt.dataset.SubsetFalconLoader
 
         # Temporary ugliness to load the batches with both the previous tokenizer
@@ -548,12 +546,12 @@ class Validator:
                 num_pages=self.config.pages_per_eval, # The pages will be sampled inside the object
                 tokenizer=tokenizer_old,
             )
-        
+
         batches_old = list(
             dataloader_old
         )
 
-        # This is useful for logging to wandb        
+        # This is useful for logging to wandb
         pages = dataloader_old.get_page_names()
 
         ## Second tokenizer (For 7B models)
@@ -567,13 +565,13 @@ class Validator:
 
         # Use the same pages as for models with old tokenizers
         dataloader_new.fetch_data_for_pages(pages=dataloader_old.pages)
-        
+
         batches_new = list(
             dataloader_new
         )
 
         bt.logging.debug(f"Computing losses on {uids} with pages {pages}")
-        
+
         # Compute model losses on batches.
         losses_per_uid = {muid: None for muid in uids}
 
@@ -816,12 +814,12 @@ class Validator:
         """Runs the validator loop, which continuously evaluates models and sets weights."""
         while True:
             try:
-                
+
                 while (
                         (self.metagraph.block.item() - self.last_epoch)
                         < self.config.blocks_per_epoch
                 ):
-                    self.current_block = self.metagraph.block.item()                    
+                    self.current_block = self.metagraph.block.item()
                     await self.try_run_step(ttl=60 * 20)
                     await self.try_sync_metagraph(ttl=60)
                     self.save_state()
