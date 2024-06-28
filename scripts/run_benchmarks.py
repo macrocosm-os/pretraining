@@ -310,6 +310,7 @@ def run_benchmarks(args: ArgumentParser, datasets: Dict[str, str], config: bt.co
     }
 
     ppls = defaultdict(list)
+    avg_losses = defaultdict(list)
     model_sizes = []
     # For each model, compute PPL on each dataset.
     for model_name, provider in models.items():
@@ -331,27 +332,32 @@ def run_benchmarks(args: ArgumentParser, datasets: Dict[str, str], config: bt.co
             bt.logging.info(
                 f"Starting computing PPL for model: {model_name} on dataset: {dataset_name}"
             )
-            ppls[dataset_name].append(
-                compute_ppl(
-                    dataset,
-                    model,
-                    tokenizer,
-                    max_length=provider.get_sequence_length(),
-                )
+            perplexity, avg_loss = compute_ppl(
+                dataset,
+                model,
+                tokenizer,
+                max_length=provider.get_sequence_length(),
             )
+            ppls[dataset_name].append(perplexity)
+            avg_losses[dataset_name].append(avg_loss)
             bt.logging.info(
-                f"Finished computing PPL: {round(ppls[dataset_name][-1], 2)} for model: {model_name} on dataset: {dataset_name} in {round(time.time()- compute_start, 2)}"
+                f"Finished computing PPL: {round(perplexity, 2)} and Avg Loss: {round(avg_loss, 2)} for model: {model_name} on dataset: {dataset_name} in {round(time.time()- compute_start, 2)}"
             )
         del model
         del tokenizer
         torch.cuda.empty_cache()
-
+   
     # Log to wandb.
     wandb.login(key=WANDB_TOKEN)
     with wandb.init(project=PROJECT):#, entity=ENTITY):
         table = wandb.Table(
             dataframe=pd.DataFrame(
-                {"Model": models.keys(), "Size": model_sizes, **ppls}
+                {
+                    "Model": models.keys(), 
+                    "Size": model_sizes, 
+                    **{f"{dataset_name} (PPL)": ppls[dataset_name] for dataset_name in ppls.keys()},
+                    **{f"{dataset_name} (Avg Loss)": avg_losses[dataset_name] for dataset_name in avg_losses.keys()}
+                }
             )
         )
         wandb.log({"benchmarks": table})
