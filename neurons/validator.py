@@ -594,49 +594,56 @@ class Validator:
                 try:
                     # Update the block this uid last updated their model.
                     uid_to_block[uid_i] = model_i_metadata.block
-                    # Get criteria to evaluate model with based on block.
-                    criteria = model_utils.get_model_criteria(model_i_metadata.block)
-                    # Use bfloat16 and flash attention optimization based on block.
-                    optimized = criteria.optimized
-                    # Use tokenizer based on block.
-                    tokenizer_identifier = criteria.tokenizer_identifier
-
-                    # Get the model locally and evaluate its loss.
-                    model_i = None
-                    with load_model_perf.sample():
-                        model_i = self.local_store.retrieve_model(
-                            hotkey,
-                            model_i_metadata.id,
-                            optimized,
+                    # Skipping evaluation for models that are too old (Pre 7B models)
+                    if model_i_metadata.block < constants.DEPRECATION_BLOCK:
+                        bt.logging.debug(
+                            f"Skipping evaluation for uid:{uid_i}. Model uploaded at block:{model_i_metadata.block}, before the deprecation block: {constants.DEPRECATION_BLOCK}."
                         )
+                        continue
+                    else:
+                        # Get criteria to evaluate model with based on block.
+                        criteria = model_utils.get_model_criteria(model_i_metadata.block)
+                        # Use bfloat16 and flash attention optimization based on block.
+                        optimized = criteria.optimized
+                        # Use tokenizer based on block.
+                        tokenizer_identifier = criteria.tokenizer_identifier
 
-                    with compute_loss_perf.sample():
-                        # Run each computation in a subprocess so that the GPU is reset between each model.
-                        batches_to_use = None
+                        # Get the model locally and evaluate its loss.
+                        model_i = None
+                        with load_model_perf.sample():
+                            model_i = self.local_store.retrieve_model(
+                                hotkey,
+                                model_i_metadata.id,
+                                optimized,
+                            )
 
-                        # Keeping identical behavior of getting this from eos token id.
-                        # Currently we set pad token = eos token but not the ids on the get tokenizer methods.
-                        pad_token_id = None
+                        with compute_loss_perf.sample():
+                            # Run each computation in a subprocess so that the GPU is reset between each model.
+                            batches_to_use = None
 
-                        if tokenizer_identifier == TokenizerIdentifier.DISTILGPT_2:
-                            batches_to_use = batches_old
-                            pad_token_id = tokenizer_old.eos_token_id
-                        else:
-                            batches_to_use = batches_new
-                            pad_token_id = tokenizer_new.eos_token_id
+                            # Keeping identical behavior of getting this from eos token id.
+                            # Currently we set pad token = eos token but not the ids on the get tokenizer methods.
+                            pad_token_id = None
 
-                        losses = utils.run_in_subprocess(
-                            functools.partial(
-                                pt.validation.compute_losses,
-                                model_i.pt_model,
-                                batches_to_use,
-                                self.config.device,
-                                pad_token_id,
-                            ),
-                            ttl=360,
-                            mode="spawn",
-                        )
-                    del model_i
+                            if tokenizer_identifier == TokenizerIdentifier.DISTILGPT_2:
+                                batches_to_use = batches_old
+                                pad_token_id = tokenizer_old.eos_token_id
+                            else:
+                                batches_to_use = batches_new
+                                pad_token_id = tokenizer_new.eos_token_id
+
+                            losses = utils.run_in_subprocess(
+                                functools.partial(
+                                    pt.validation.compute_losses,
+                                    model_i.pt_model,
+                                    batches_to_use,
+                                    self.config.device,
+                                    pad_token_id,
+                                ),
+                                ttl=360,
+                                mode="spawn",
+                            )
+                        del model_i
                 except Exception as e:
                     bt.logging.error(
                         f"Error in eval loop: {e}. Setting losses for uid: {uid_i} to infinity."

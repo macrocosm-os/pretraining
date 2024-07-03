@@ -47,6 +47,9 @@ BLOCK_FW_EDU_SCORE_2 = 3_307_004
 
 # FIXING MODEL CRITERIA
 
+# Models uploaded before this block will not be evaluated.
+DEPRECATION_BLOCK = BLOCK_7B
+
 # Fixing sequence length
 SEQUENCE_LENGTH_1 = 1024
 SEQUENCE_LENGTH_2 = 4096
