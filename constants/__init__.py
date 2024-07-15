@@ -30,7 +30,7 @@ __spec_version__ = (
 )
 
 # The validator WANDB project.
-WANDB_PROJECT = "pretraining-subnet"
+WANDB_PROJECT = "pretraining-validators"
 
 # The uid for this subnet.
 SUBNET_UID = 9
