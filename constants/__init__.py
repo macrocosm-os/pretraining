@@ -18,7 +18,7 @@ from model.data import ModelCriteria, TokenizerIdentifier
 # ---------------------------------
 
 # Release
-__version__ = "3.2.1"
+__version__ = "3.2.2"
 
 # Validator schema version
 __validator_version__ = "2.2.2"
