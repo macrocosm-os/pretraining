@@ -542,14 +542,9 @@ class Validator:
         ## First tokenizer (Prior to 7B models)
         tokenizer_old = pt.model.get_old_tokenizer(cache_dir=self.config.model_dir)
         dataloader_old = SubsetDataLoader(
-                batch_size=constants.batch_size,
-                sequence_length=constants.SEQUENCE_LENGTH_1,
-                num_pages=self.config.pages_per_eval, # The pages will be sampled inside the object
-                tokenizer=tokenizer_old,
-            )
-
-        batches_old = list(
-            dataloader_old
+            sequence_length=constants.SEQUENCE_LENGTH_1,
+            num_pages=self.config.pages_per_eval,  # The pages will be sampled inside the object
+            tokenizer=tokenizer_old,
         )
 
         # This is useful for logging to wandb
@@ -558,11 +553,10 @@ class Validator:
         ## Second tokenizer (For 7B models)
         tokenizer_new = pt.model.get_tokenizer(cache_dir=self.config.model_dir)
         dataloader_new = SubsetDataLoader(
-            batch_size=constants.batch_size,
             sequence_length=constants.SEQUENCE_LENGTH_2,
-            num_pages=None, # Do not automatically generate pages. They will be manually set.
+            num_pages=None,  # Do not automatically generate pages. They will be manually set.
             tokenizer=tokenizer_new,
-            )
+        )
 
         # Use the same pages as for models with old tokenizers
         dataloader_new.fetch_data_for_pages(pages=dataloader_old.pages)
