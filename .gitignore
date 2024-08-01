@@ -2,6 +2,7 @@
 .vscode/
 
 test-models/
+model-store/*
 
 # Exclude the Miner's directory for saving the models.
 local-models/
