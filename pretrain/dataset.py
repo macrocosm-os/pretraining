@@ -435,3 +435,31 @@ class SubsetFalconLoader(IterableDataset):
             batch.append(torch.tensor(self.buffer[: self.sequence_length]))
             self.buffer = self.buffer[self.sequence_length :]
         return torch.stack(batch)
+def main():
+    tokenizer = AutoTokenizer.from_pretrained("gpt2")
+    # Display the padding and EOS token IDs
+    # pad_token_id = tokenizer.eos_token_id  # GPT-2 does not have a padding token, use EOS token
+    pad_token_id = "163163163"
+    eos_token_id = tokenizer.eos_token_id
+
+    print(f"PAD token ID: {pad_token_id}")
+    print(f"EOS token ID: {eos_token_id}")
+
+    sequence_length = 500000
+    num_pages = 2
+
+    # Print other parameters
+    print(f"Sequence length: {sequence_length}")
+    print(f"Number of pages: {num_pages}")
+
+    dataset_loader = SubsetFineWebEdu2Loader(
+        sequence_length=sequence_length, num_pages=num_pages, tokenizer=tokenizer
+    )
+
+    for i, batch in enumerate(dataset_loader):
+        print(f"Batch {i + 1}:")
+        print(batch)
+
+
+if __name__ == "__main__":
+    main()
