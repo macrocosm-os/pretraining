@@ -438,8 +438,7 @@ class SubsetFalconLoader(IterableDataset):
 def main():
     tokenizer = AutoTokenizer.from_pretrained("gpt2")
     # Display the padding and EOS token IDs
-    # pad_token_id = tokenizer.eos_token_id  # GPT-2 does not have a padding token, use EOS token
-    pad_token_id = "163163163"
+    pad_token_id = tokenizer.eos_token_id  # GPT-2 does not have a padding token, use EOS token
     eos_token_id = tokenizer.eos_token_id
 
     print(f"PAD token ID: {pad_token_id}")

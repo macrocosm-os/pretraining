@@ -547,6 +547,8 @@ class Validator:
             tokenizer=tokenizer_old,
         )
 
+        batches_old = list(dataloader_old)
+
         # This is useful for logging to wandb
         pages = dataloader_old.get_page_names()
 
