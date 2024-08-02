@@ -10,6 +10,8 @@ class CompetitionId(IntEnum):
 
     B3_MODEL = 2
 
+    B7_MODEL_LOWER_EPSILON = 3
+
     # Overwrite the default __repr__, which doesn't work with
     # bt.logging for some unknown reason.
     def __repr__(self) -> str:

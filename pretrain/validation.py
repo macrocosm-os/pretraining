@@ -26,7 +26,7 @@ import traceback
 import bittensor as bt
 
 
-def iswin(loss_i, loss_j, block_i, block_j) -> bool:
+def iswin(loss_i, loss_j, block_i, block_j, epsilon) -> bool:
     """
     Determines the winner between two models based on the epsilon adjusted loss.
 
@@ -35,12 +35,14 @@ def iswin(loss_i, loss_j, block_i, block_j) -> bool:
         loss_j (float): Loss of uid j on batch.
         block_i (int): Block of uid i.
         block_j (int): Block of uid j.
+        epsilon (float): How much advantage to give to the earlier block.
+
     Returns:
         bool: True if loss i is better, False otherwise.
     """
     # Adjust loss based on timestamp and pretrain epsilon
-    loss_i = (1 - constants.timestamp_epsilon) * loss_i if block_i < block_j else loss_i
-    loss_j = (1 - constants.timestamp_epsilon) * loss_j if block_j < block_i else loss_j
+    loss_i = (1 - epsilon) * loss_i if block_i < block_j else loss_i
+    loss_j = (1 - epsilon) * loss_j if block_j < block_i else loss_j
     return loss_i < loss_j
 
 
@@ -49,6 +51,7 @@ def compute_wins(
     losses_per_uid: typing.Dict[int, typing.List[float]],
     batches: typing.List[torch.FloatTensor],
     uid_to_block: typing.Dict[int, int],
+    epsilon: float
 ) -> typing.Tuple[typing.Dict[int, int], typing.Dict[int, float]]:
     """
     Computes the wins and win rate for each model based on loss comparison.
@@ -58,6 +61,7 @@ def compute_wins(
         losses_per_uid (dict): A dictionary of losses for each uid by batch.
         batches (List): A list of data batches.
         uid_to_block (dict): A dictionary of blocks for each uid.
+        epsilon (float): How much advantage to give to the earlier block.
 
     Returns:
         tuple: A tuple containing two dictionaries, one for wins and one for win rates.
@@ -74,7 +78,7 @@ def compute_wins(
             for batch_idx, _ in enumerate(batches):
                 loss_i = losses_per_uid[uid_i][batch_idx]
                 loss_j = losses_per_uid[uid_j][batch_idx]
-                wins[uid_i] += 1 if iswin(loss_i, loss_j, block_i, block_j) else 0
+                wins[uid_i] += 1 if iswin(loss_i, loss_j, block_i, block_j, epsilon) else 0
                 total_matches += 1
         # Calculate win rate for uid i
         win_rate[uid_i] = wins[uid_i] / total_matches if total_matches > 0 else 0

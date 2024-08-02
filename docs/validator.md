@@ -25,7 +25,7 @@ You can view the entire validation system by reading the code in `neurons/valida
             for model_b in models:
                 for i in len( batches )
                     # Determine if better model loss with relative block number boosting.
-                    if iswin( model_losses[ model_a ][ i ], model_losses[ model_b ][ i ], block_a, block_b ):
+                    if iswin( model_losses[ model_a ][ i ], model_losses[ model_b ][ i ], block_a, block_b, epsilon = constants.timestamp_epsilon):
                         model_wins[ model_a ] += 1
                             
         # End epoch.
@@ -38,12 +38,12 @@ You can view the entire validation system by reading the code in `neurons/valida
         set_weights( weight )
 ```
 
-The behaviour of `iswin( loss_a, loss_b, block_a, block_b)` function intentionally skews the win function to reward models which have been hosted earlier such that newer models are only better than others iff their loss is `epsilon` percent lower accoring to the following function. Currently `epsilon` is set to 1% and is a hyper parameter of the mechanism
+The behaviour of `iswin( loss_a, loss_b, block_a, block_b, epsilon)` function intentionally skews the win function to reward models which have been hosted earlier such that newer models are only better than others iff their loss is `epsilon` percent lower accoring to the following function. Currently `epsilon` is set to 1% and is a hyper parameter of the mechanism
 
 ```python
-def iswin( loss_a, loss_b, block_a, block_b ):
-    loss_a = (1 - constants.timestamp_epsilon) * loss_a if block_a < block_b else loss_a
-    loss_b = (1 - constants.timestamp_epsilon) * loss_b if block_b < block_a else loss_b
+def iswin( loss_a, loss_b, block_a, block_b, epsilon):
+    loss_a = (1 - epsilon) * loss_a if block_a < block_b else loss_a
+    loss_b = (1 - epsilon) * loss_b if block_b < block_a else loss_b
     return loss_a < loss_b
 ```
 
