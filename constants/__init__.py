@@ -188,6 +188,9 @@ alpha = 0.5
 temperature = 0.01
 # validator score boosting for earlier models.
 timestamp_epsilon = 0.005
+timestamp_epsilon_experiment_start_block = 3_593_150
+timestamp_epsilon_experiment = 0.001
+timestamp_epsilon_experiment_weight_percent = 0.05
 # validators number of pages to eval over miners on each step.
 n_eval_pages = 18
 # validator eval batch size.
