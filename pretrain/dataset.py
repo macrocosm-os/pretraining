@@ -43,12 +43,20 @@ class SubsetFineWebEdu2Loader(IterableDataset):
         num_pages=None,
         tokenizer: AutoTokenizer=None,
     ):
-        self.batch_size = batch_size
         self.sequence_length = sequence_length
         self.num_pages = num_pages
         self.num_rows_per_page = 100
         self.tokenizer = tokenizer
 
+        # Use a default PAD token ID if the tokenizer does not provide one
+        # (e.g. GPT-2 does not have a padding token)
+        # If the tokenizer does not have a padding token, use the EOS token.
+
+        self.pad_token_id = (
+            self.tokenizer.pad_token_id
+            if self.tokenizer.pad_token_id is not None
+            else self.tokenizer.eos_token_id
+        )
         self.buffer = []
 
         # Get the dataset configs and their row sizes
@@ -91,11 +99,14 @@ class SubsetFineWebEdu2Loader(IterableDataset):
 
                 # Add the page since the request was successful
                 self.pages.append((config_name, page, split))
-                
+
+                page_buffer = []
                 for row in response.json()["rows"]:
                     content = row["row"]["text"]
-                    self.buffer += self.tokenizer(content, truncation=True)["input_ids"]
-                    self.buffer += [self.tokenizer.eos_token_id]
+                    page_buffer += self.tokenizer(content, truncation=True)["input_ids"]
+                    page_buffer += [self.tokenizer.eos_token_id]
+
+                self.buffer.append(page_buffer)
 
             except requests.exceptions.RequestException as e:
                 attempts += 1
@@ -147,13 +158,15 @@ class SubsetFineWebEdu2Loader(IterableDataset):
 
                 response.raise_for_status()  # This will raise an HTTPError if the HTTP request returned an unsuccessful status code
 
+                page_buffer = []
                 for row in response.json()["rows"]:
                     content = row["row"]["text"]
-                    self.buffer += self.tokenizer(content, truncation=True)["input_ids"]
-                    self.buffer += [self.tokenizer.eos_token_id]
-                    
+                    page_buffer += self.tokenizer(content, truncation=True)["input_ids"]
+                    page_buffer += [self.tokenizer.eos_token_id]
+
+                self.buffer.append(page_buffer)
                 break  # If the request was successful, break out of the retry loop
-            
+
             except requests.exceptions.RequestException as e:
                 attempt += 1
                 bt.logging.warning(
@@ -292,27 +305,30 @@ class SubsetFineWebEdu2Loader(IterableDataset):
                         "Maximum retry limit reached. Unable to fetch data."
                     )
                     raise
-                
+
     def __iter__(self):
-        while len(self.buffer) >= self.sequence_length * self.batch_size:
-            batch = []
-            for _ in range(self.batch_size):
-                batch.append(torch.tensor(self.buffer[: self.sequence_length]))
-                self.buffer = self.buffer[self.sequence_length :]
-            yield torch.stack(batch)
+        while self.buffer:
+            page_buffer = self.buffer.pop(0)
+            if len(page_buffer) < self.sequence_length:
+                page_buffer += [self.pad_token_id] * (
+                    self.sequence_length - len(page_buffer)
+                )
+            yield torch.tensor(page_buffer[: self.sequence_length]).unsqueeze(0)
 
     def __next__(self):
-        batch = []
-        for _ in range(self.batch_size):
-            batch.append(torch.tensor(self.buffer[: self.sequence_length]))
-            self.buffer = self.buffer[self.sequence_length :]
-        return torch.stack(batch)
+        if not self.buffer:
+            raise StopIteration
+        page_buffer = self.buffer.pop(0)
+        if len(page_buffer) < self.sequence_length:
+            page_buffer += [self.pad_token_id] * (
+                self.sequence_length - len(page_buffer)
+            )
+        return torch.tensor(page_buffer[: self.sequence_length]).unsqueeze(0)
 
 
 class SubsetFalconLoader(IterableDataset):
     max_pages: int = 968000015
-    name: str = "tiiuae/falcon-refinedweb"
-    
+
     def __init__(
         self,
         batch_size,
@@ -326,7 +342,7 @@ class SubsetFalconLoader(IterableDataset):
         self.tokenizer = tokenizer
         self.base_url = "https://datasets-server.huggingface.co/rows"
         self.params = {
-            "dataset": self.name,
+            "dataset": "tiiuae/falcon-refinedweb",
             "config": "default",
             "split": "train",
         }
