@@ -808,6 +808,7 @@ class Validator:
         model_weights = torch.tensor(
             [win_rate[uid] for uid in uids], dtype=torch.float32
         )
+        step_weights = torch.softmax(model_weights / constants.temperature, dim=0)
 
         # If we are running the epsilon experiment for competition 1 then also try the experiment epsilon.
         if (
@@ -824,21 +825,25 @@ class Validator:
                 )
             )
 
-            # Overwrite model weights using a ratio between regular and experiment win rates.
-            model_weights = torch.tensor(
-                [
-                    win_rate[uid]
-                    * (1 - constants.timestamp_epsilon_experiment_weight_percent)
-                    + win_rate_epsilon_experiment[uid]
-                    * constants.timestamp_epsilon_experiment_weight_percent
-                    for uid in uids
-                ],
-                dtype=torch.float32,
+            # Compute softmaxed weights based on win rate.
+            model_weights_epsilon_experiment = torch.tensor(
+                [win_rate_epsilon_experiment[uid] for uid in uids], dtype=torch.float32
+            )
+            step_weights_epsilon_experiment = torch.softmax(
+                model_weights_epsilon_experiment / constants.temperature, dim=0
+            )
+
+            # Overwrite step weights using a ratio between regular and experiment model weights.
+            # We do this after the original softmax and temperature division so we still get two distinct '1st places'.
+            regular_weight = 1 - constants.timestamp_epsilon_experiment_weight_percent
+            experiment_weight = constants.timestamp_epsilon_experiment_weight_percent
+            step_weights = torch.softmax(
+                step_weights * regular_weight
+                + step_weights_epsilon_experiment * experiment_weight,
+                dim=0,
             )
 
             # TODO: log here, since the regular wandb log will keep using the original win rates. Or blend the rates.
-
-        step_weights = torch.softmax(model_weights / constants.temperature, dim=0)
 
         # Fill in metagraph sized tensor with the step weights of the evaluated models.
         with self.metagraph_lock:
