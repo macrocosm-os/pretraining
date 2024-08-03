@@ -589,7 +589,7 @@ class Validator:
                     version_key=constants.weights_version_key,
                 )
                 # We only update the last epoch when we successfully set weights.
-                self.last_epoch = block
+                self.last_epoch = cur_block
             except:
                 bt.logging.warning("Failed to set weights. Trying again later.")
 
@@ -667,7 +667,7 @@ class Validator:
 
         # Get the competition schedule for the current block.
         # This is a list of competitions
-        competition_schedule: List[Competition] = (
+        competition_schedule: typing.List[Competition] = (
             competition_utils.get_competition_schedule_for_block(
                 block=cur_block,
                 schedule_by_block=constants.COMPETITION_SCHEDULE_BY_BLOCK,
@@ -843,7 +843,20 @@ class Validator:
                 dim=0,
             )
 
-            # TODO: log here, since the regular wandb log will keep using the original win rates. Or blend the rates.
+            # TODO: Define this competition. This competition ID is used for logging only.
+            # Since we have different win rates for this experimental competition, we need to log it separately.
+            self.log_step(
+                CompetitionId.B7_MODEL_LOWER_EPSILON,
+                uids,
+                uid_to_block,
+                self._get_uids_to_competition_ids(),
+                pages,
+                wins_epsilon_experiment,
+                win_rate_epsilon_experiment,
+                losses_per_uid,
+                load_model_perf,
+                compute_loss_perf,
+            )
 
         # Fill in metagraph sized tensor with the step weights of the evaluated models.
         with self.metagraph_lock:
