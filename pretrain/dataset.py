@@ -15,6 +15,7 @@
 # THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
+
 import torch
 import typing
 import random
@@ -26,27 +27,27 @@ from transformers import AutoTokenizer
 from datasets import load_dataset
 from pprint import pprint
 
-
 class SubsetFineWebEdu2Loader(IterableDataset):
 
-    name: str = "HuggingFaceFW/fineweb-edu-score-2"    
+    name: str = "HuggingFaceFW/fineweb-edu-score-2"
     rows_base_url: str = "https://datasets-server.huggingface.co/rows"
     size_base_url: str = "https://datasets-server.huggingface.co/size"
 
     retry_limit: int = 10  # Number of retries
     retry_delay: int = 5  # Seconds to wait between retries
-    
+
     def __init__(
         self,
-        batch_size=None,
         sequence_length=None,
         num_pages=None,
-        tokenizer: AutoTokenizer=None,
+        tokenizer: AutoTokenizer = None,
+        batch_size=1,
     ):
         self.sequence_length = sequence_length
         self.num_pages = num_pages
         self.num_rows_per_page = 100
         self.tokenizer = tokenizer
+        self.batch_size = batch_size
 
         # Use a default PAD token ID if the tokenizer does not provide one
         # (e.g. GPT-2 does not have a padding token)
@@ -68,28 +69,28 @@ class SubsetFineWebEdu2Loader(IterableDataset):
         if self.num_pages:
             self._fetch_data_to_buffer(self.num_pages)
 
-            
     def _fetch_data_to_buffer(self, num_pages):
         """
         Randomly sample pages and add their data to the buffer.
         If a page is inaccessible, another one is sampled.
         this method sets the `pages` property
         """
-        
+
         self.pages = []
         attempts = 0
-        
+
         while len(self.pages) < num_pages:
 
             # randomly sample one page
-            config_name, page, split = self.get_random_pages(num_pages = 1)[0]
-            
+            config_name, page, split = self.get_random_pages(num_pages=1)[0]
+
             # Create the request parameters
-            params = dict(dataset=self.name,
-                          config=config_name,
-                          split=split,
-                          offset=page,
-                          limit=self.num_rows_per_page
+            params = dict(
+                dataset=self.name,
+                config=config_name,
+                split=split,
+                offset=page,
+                limit=self.num_rows_per_page,
             )
 
             try:
@@ -129,7 +130,7 @@ class SubsetFineWebEdu2Loader(IterableDataset):
         """
 
         self.pages = pages
-        
+
         # Empty the buffer if it is not.
         self.buffer = []
 
@@ -139,19 +140,20 @@ class SubsetFineWebEdu2Loader(IterableDataset):
     def _fetch_data_for_page(self, page):
 
         retry_limit = 10
-        
+
         attempt = 0
         while attempt < retry_limit:
             config_name, page, split = page
 
             # Create the request parameters
-            params = dict(dataset=self.name,
-                          config=config_name,
-                          split=split,
-                          offset=page,
-                          limit=self.num_rows_per_page
+            params = dict(
+                dataset=self.name,
+                config=config_name,
+                split=split,
+                offset=page,
+                limit=self.num_rows_per_page,
             )
-            
+
             try:
 
                 response = requests.get(self.rows_base_url, params=params)
@@ -179,24 +181,25 @@ class SubsetFineWebEdu2Loader(IterableDataset):
                         "Maximum retry limit reached. Unable to fetch data."
                     )
                     raise
-                
+
     def fetch_data_to_rows(self, num_pages):
 
         rows = []
         attempts = 0
         num_downloaded_pages = 0
-        
+
         while num_downloaded_pages < num_pages:
 
             # randomly sample one page
-            config_name, page, split = self.get_random_pages(num_pages = 1)[0]
-            
+            config_name, page, split = self.get_random_pages(num_pages=1)[0]
+
             # Create the request parameters
-            params = dict(dataset=self.name,
-                          config=config_name,
-                          split=split,
-                          offset=page,
-                          limit=self.num_rows_per_page
+            params = dict(
+                dataset=self.name,
+                config=config_name,
+                split=split,
+                offset=page,
+                limit=self.num_rows_per_page,
             )
 
             try:
@@ -205,7 +208,7 @@ class SubsetFineWebEdu2Loader(IterableDataset):
                 response.raise_for_status()  # This will raise an HTTPError if the HTTP request returned an unsuccessful status code
 
                 num_downloaded_pages += 1
-                
+
                 for row in response.json()["rows"]:
                     rows.append(row["row"]["text"])
 
@@ -223,26 +226,27 @@ class SubsetFineWebEdu2Loader(IterableDataset):
                     )
                     raise
 
-                
         return rows
-    
+
     def get_random_pages(self, num_pages):
         """
         Randomly sample one page.
         A page is a row number of a given split of a given dataset dump.
         """
         pages = []
-        
+
         for _ in range(num_pages):
-            
+
             # Choose a random config
             config_name = random.choice(list(self.configs_data.keys()))
 
             # Choose a random page (row)
-            page = random.randint(0,
-                                  self.configs_data[config_name]['num_rows'] - 1 - self.num_rows_per_page)
+            page = random.randint(
+                0,
+                self.configs_data[config_name]["num_rows"] - 1 - self.num_rows_per_page,
+            )
 
-            split = self.configs_data[config_name]['split']
+            split = self.configs_data[config_name]["split"]
 
             pages.append((config_name, page, split))
 
@@ -255,13 +259,15 @@ class SubsetFineWebEdu2Loader(IterableDataset):
         """
 
         page_names = []
-        
-        if hasattr(self, 'pages'):
-            page_names = [f'{cfg_name}_{num_rows}_{split}' for
-                           cfg_name, num_rows, split in self.pages]
-            
+
+        if hasattr(self, "pages"):
+            page_names = [
+                f"{cfg_name}_{num_rows}_{split}"
+                for cfg_name, num_rows, split in self.pages
+            ]
+
         return page_names
-        
+
     def fetch_dataset_configs(self) -> typing.Dict[str, typing.Dict]:
         """
         Fetch the different dump names, aka configs, aka samples, of the
@@ -270,10 +276,8 @@ class SubsetFineWebEdu2Loader(IterableDataset):
         a dict of the number of rows and the split as values.
         """
         # Request parameters
-        params = dict(
-            dataset = self.name
-            )
-        
+        params = dict(dataset=self.name)
+
         attempt = 0
         while attempt < self.retry_limit:
             try:
@@ -281,18 +285,21 @@ class SubsetFineWebEdu2Loader(IterableDataset):
                 response.raise_for_status()  # This will raise an HTTPError if the HTTP request returned an unsuccessful status code
 
                 # Extract the configs dict
-                configs_dict = response.json()['size']['splits']
+                configs_dict = response.json()["size"]["splits"]
 
                 # Now create a dict with config names (except 'default') as
                 # keys, and the number of rows as values
-                configs_data = {entry['config']: {'num_rows': entry['num_rows'] ,
-                                                  'split': entry['split']}
-                                for entry in configs_dict
-                                if entry['config'] != 'default'
-                                }                
+                configs_data = {
+                    entry["config"]: {
+                        "num_rows": entry["num_rows"],
+                        "split": entry["split"],
+                    }
+                    for entry in configs_dict
+                    if entry["config"] != "default"
+                }
 
                 return configs_data
-                    
+
             except requests.exceptions.RequestException as e:
                 attempt += 1
                 bt.logging.warning(
@@ -308,23 +315,36 @@ class SubsetFineWebEdu2Loader(IterableDataset):
 
     def __iter__(self):
         while self.buffer:
+            batch = []
+            for _ in range(self.batch_size):
+                if not self.buffer:
+                    break
+                page_buffer = self.buffer.pop(0)
+                if len(page_buffer) < self.sequence_length:
+                    page_buffer += [self.pad_token_id] * (
+                        self.sequence_length - len(page_buffer)
+                    )
+                batch.append(page_buffer[: self.sequence_length])
+            if batch:
+                yield torch.tensor(batch)
+
+    def __next__(self):
+        if not self.buffer:
+            raise StopIteration
+        batch = []
+        for _ in range(self.batch_size):
+            if not self.buffer:
+                break
             page_buffer = self.buffer.pop(0)
             if len(page_buffer) < self.sequence_length:
                 page_buffer += [self.pad_token_id] * (
                     self.sequence_length - len(page_buffer)
                 )
-            yield torch.tensor(page_buffer[: self.sequence_length]).unsqueeze(0)
-
-    def __next__(self):
-        if not self.buffer:
+            batch.append(page_buffer[: self.sequence_length])
+        if batch:
+            return torch.tensor(batch)
+        else:
             raise StopIteration
-        page_buffer = self.buffer.pop(0)
-        if len(page_buffer) < self.sequence_length:
-            page_buffer += [self.pad_token_id] * (
-                self.sequence_length - len(page_buffer)
-            )
-        return torch.tensor(page_buffer[: self.sequence_length]).unsqueeze(0)
-
 
 class SubsetFalconLoader(IterableDataset):
     max_pages: int = 968000015
