@@ -316,15 +316,20 @@ class SubsetFineWebEdu2Loader(IterableDataset):
     def __iter__(self):
         while self.buffer:
             batch = []
-            for _ in range(self.batch_size):
+            while len(batch) < self.batch_size:
                 if not self.buffer:
                     break
-                page_buffer = self.buffer.pop(0)
-                if len(page_buffer) < self.sequence_length:
-                    page_buffer += [self.pad_token_id] * (
-                        self.sequence_length - len(page_buffer)
+                page_buffer = self.buffer[0]
+                if len(page_buffer) <= self.sequence_length:
+                    batch.append(
+                        page_buffer
+                        + [self.pad_token_id]
+                        * (self.sequence_length - len(page_buffer))
                     )
-                batch.append(page_buffer[: self.sequence_length])
+                    self.buffer.pop(0)
+                else:
+                    batch.append(page_buffer[: self.sequence_length])
+                    self.buffer[0] = page_buffer[self.sequence_length :]
             if batch:
                 yield torch.tensor(batch)
 
@@ -332,15 +337,19 @@ class SubsetFineWebEdu2Loader(IterableDataset):
         if not self.buffer:
             raise StopIteration
         batch = []
-        for _ in range(self.batch_size):
+        while len(batch) < self.batch_size:
             if not self.buffer:
                 break
-            page_buffer = self.buffer.pop(0)
-            if len(page_buffer) < self.sequence_length:
-                page_buffer += [self.pad_token_id] * (
-                    self.sequence_length - len(page_buffer)
+            page_buffer = self.buffer[0]
+            if len(page_buffer) <= self.sequence_length:
+                batch.append(
+                    page_buffer
+                    + [self.pad_token_id] * (self.sequence_length - len(page_buffer))
                 )
-            batch.append(page_buffer[: self.sequence_length])
+                self.buffer.pop(0)
+            else:
+                batch.append(page_buffer[: self.sequence_length])
+                self.buffer[0] = page_buffer[self.sequence_length :]
         if batch:
             return torch.tensor(batch)
         else:
