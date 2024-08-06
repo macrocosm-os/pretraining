@@ -778,6 +778,7 @@ class Validator:
                                 batches,
                                 self.config.device,
                                 tokenizer.eos_token_id,
+                                pad_token_id = dataloader.pad_token_id
                             ),
                             ttl=360,
                             mode="spawn",

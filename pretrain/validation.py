@@ -181,7 +181,7 @@ def compute_losses(
                 shift_logits = logits[..., :-1, :].contiguous()
                 shift_labels = inputs[..., 1:].contiguous()
                 # Flatten the tokens
-                loss_fct = torch.nn.CrossEntropyLoss()
+                loss_fct = torch.nn.CrossEntropyLoss(ignore_index=pad_token_id)
                 shift_logits = shift_logits.view(-1, model.config.vocab_size)
                 shift_labels = shift_labels.view(-1)
                 loss = loss_fct(shift_logits, shift_labels).item()
