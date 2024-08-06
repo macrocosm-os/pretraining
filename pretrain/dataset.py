@@ -363,7 +363,7 @@ class SubsetFalconLoader(IterableDataset):
         batch_size,
         sequence_length,
         num_pages=None,
-        tokenizer: AutoTokenizer=None,
+        tokenizer: AutoTokenizer = None,
     ):
         self.batch_size = batch_size
         self.sequence_length = sequence_length
@@ -380,10 +380,18 @@ class SubsetFalconLoader(IterableDataset):
         self.retry_limit = 10  # Number of retries
         self.retry_delay = 5  # Seconds to wait between retries
 
+        # Use a default PAD token ID if the tokenizer does not provide one
+        # (e.g. GPT-2 does not have a padding token)
+        # If the tokenizer does not have a padding token, use the EOS token.
+        self.pad_token_id = (
+            self.tokenizer.pad_token_id
+            if self.tokenizer.pad_token_id is not None
+            else self.tokenizer.eos_token_id
+        )
 
         # Fetch pages only if the number of pages is specified
         if self.num_pages:
-            pages = self._sample_pages()            
+            pages = self._sample_pages()
             self.fetch_data_for_pages(pages)
 
     def fetch_data_for_pages(self, pages):
@@ -391,15 +399,14 @@ class SubsetFalconLoader(IterableDataset):
         Set the pages to be used to fill the buffer. Then fetch the page data
         to the buffer.
         """
-        
         self.pages = pages
 
         # Empty the buffer if it is not.
         self.buffer = []
-        
+
         for page in self.pages:
             self._fetch_data_for_page(page)
-            
+
     def _fetch_data_for_page(self, page):
         self.params["offset"] = page
         self.params["limit"] = self.num_rows_per_page
@@ -408,10 +415,12 @@ class SubsetFalconLoader(IterableDataset):
             try:
                 response = requests.get(self.base_url, params=self.params)
                 response.raise_for_status()  # This will raise an HTTPError if the HTTP request returned an unsuccessful status code
+                page_buffer = []
                 for row in response.json()["rows"]:
                     content = row["row"]["content"]
-                    self.buffer += self.tokenizer(content, truncation=True)["input_ids"]
-                    self.buffer += [self.tokenizer.eos_token_id]
+                    page_buffer += self.tokenizer(content, truncation=True)["input_ids"]
+                    page_buffer += [self.tokenizer.eos_token_id]
+                self.buffer.append(page_buffer)
                 break  # If the request was successful, break out of the retry loop
             except requests.exceptions.RequestException as e:
                 attempt += 1
@@ -430,37 +439,57 @@ class SubsetFalconLoader(IterableDataset):
         """
         Randomly sample pages to be used in validation
         """
-        pages = [
-            random.randint(1, self.max_pages)
-            for _ in range(self.num_pages)
-        ]
-
+        pages = [random.randint(1, self.max_pages) for _ in range(self.num_pages)]
         return pages
 
-        
     def get_page_names(self):
         """
         This is a utility function that returns the page names that were used.
         Each page as a single string instead of a tuple
         """
         page_names = []
-        
-        if hasattr(self, 'pages'):
+        if hasattr(self, "pages"):
             page_names = self.pages
-            
         return page_names
-    
+
     def __iter__(self):
-        while len(self.buffer) >= self.sequence_length * self.batch_size:
+        while self.buffer:
             batch = []
-            for _ in range(self.batch_size):
-                batch.append(torch.tensor(self.buffer[: self.sequence_length]))
-                self.buffer = self.buffer[self.sequence_length :]
-            yield torch.stack(batch)
+            while len(batch) < self.batch_size:
+                if not self.buffer:
+                    break
+                page_buffer = self.buffer[0]
+                if len(page_buffer) <= self.sequence_length:
+                    batch.append(
+                        page_buffer
+                        + [self.pad_token_id]
+                        * (self.sequence_length - len(page_buffer))
+                    )
+                    self.buffer.pop(0)
+                else:
+                    batch.append(page_buffer[: self.sequence_length])
+                    self.buffer[0] = page_buffer[self.sequence_length :]
+            if batch:
+                yield torch.tensor(batch)
 
     def __next__(self):
+        if not self.buffer:
+            raise StopIteration
         batch = []
-        for _ in range(self.batch_size):
-            batch.append(torch.tensor(self.buffer[: self.sequence_length]))
-            self.buffer = self.buffer[self.sequence_length :]
-        return torch.stack(batch)
+        while len(batch) < self.batch_size:
+            if not self.buffer:
+                break
+            page_buffer = self.buffer[0]
+            if len(page_buffer) <= self.sequence_length:
+                batch.append(
+                    page_buffer
+                    + [self.pad_token_id] * (self.sequence_length - len(page_buffer))
+                )
+                self.buffer.pop(0)
+            else:
+                batch.append(page_buffer[: self.sequence_length])
+                self.buffer[0] = page_buffer[self.sequence_length :]
+        if batch:
+            return torch.tensor(batch)
+        else:
+            raise StopIteration
