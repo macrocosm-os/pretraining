@@ -115,8 +115,8 @@ class Validator:
         torch.backends.cudnn.benchmark = True
 
         # Dont check registration status if offline.
-        if not self.config.offline:
-            self.uid = metagraph_utils.assert_registered(self.wallet, self.metagraph)
+        # if not self.config.offline:
+        #    self.uid = metagraph_utils.assert_registered(self.wallet, self.metagraph)
 
         # Track how may run_steps this validator has completed.
         self.run_step_count = 0
