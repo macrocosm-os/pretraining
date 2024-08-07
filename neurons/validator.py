@@ -837,10 +837,9 @@ class Validator:
             # We do this after the original softmax and temperature division so we still get two distinct '1st places'.
             regular_weight = 1 - constants.timestamp_epsilon_experiment_weight_percent
             experiment_weight = constants.timestamp_epsilon_experiment_weight_percent
-            step_weights = torch.softmax(
+            step_weights = (
                 step_weights * regular_weight
-                + step_weights_epsilon_experiment * experiment_weight,
-                dim=0,
+                + step_weights_epsilon_experiment * experiment_weight
             )
 
             # Since we have different win rates for this experimental competition, we need to log it separately.
@@ -848,12 +847,15 @@ class Validator:
             uids_to_competition_ids_epsilon_experiment = {
                 k: (
                     CompetitionId.B7_MODEL_LOWER_EPSILON
-                    if v is CompetitionId.B7_MODEL
+                    if v == CompetitionId.B7_MODEL
                     else v
                 )
                 for k, v in self._get_uids_to_competition_ids().items()
             }
 
+            bt.logging.info(
+                "Logging step for Epsilon Experiment. Weights are not final."
+            )
             self.log_step(
                 CompetitionId.B7_MODEL_LOWER_EPSILON,
                 uids,
@@ -935,7 +937,7 @@ class Validator:
         competition_id: CompetitionId,
         uids: typing.List[int],
         uid_to_block: typing.Dict[int, int],
-        uid_to_competition_id: typing.Dict[int, typing.Optional[CompetitionId]],
+        uid_to_competition_id: typing.Dict[int, typing.Optional[int]],
         pages: typing.List[str],
         wins: typing.Dict[int, int],
         win_rate: typing.Dict[int, float],
@@ -1061,8 +1063,8 @@ class Validator:
 
     def _get_uids_to_competition_ids(
         self,
-    ) -> typing.Dict[int, typing.Optional[CompetitionId]]:
-        """Returns a mapping of uids to competition ids, based on the validator's current state"""
+    ) -> typing.Dict[int, typing.Optional[int]]:
+        """Returns a mapping of uids to competition id ints, based on the validator's current state"""
         hotkey_to_metadata = (
             self.model_tracker.get_miner_hotkey_to_model_metadata_dict()
         )
