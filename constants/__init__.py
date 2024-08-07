@@ -92,9 +92,9 @@ ALLOWED_MODEL_TYPES_2 = {
 
 # Defined dataset by competition id
 DATASET_BY_COMPETITION_ID: Dict[CompetitionId, str] = {
-    CompetitionId.M772_MODEL : pt.dataset.SubsetFalconLoader,
-    CompetitionId.B3_MODEL : pt.dataset.SubsetFalconLoader,
-    CompetitionId.B7_MODEL : pt.dataset.SubsetFineWebEdu2Loader,
+    CompetitionId.M772_MODEL: pt.dataset.SubsetFalconLoader,
+    CompetitionId.B3_MODEL: pt.dataset.SubsetFalconLoader,
+    CompetitionId.B7_MODEL: pt.dataset.SubsetFineWebEdu2Loader,
 }
 
 # Defined model constraints by competition id to ensure they are constant across blocks.
@@ -130,7 +130,7 @@ MODEL_CONSTRAINTS_BY_COMPETITION_ID: Dict[CompetitionId, ModelConstraints] = {
             "attn_implementation": "flash_attention_2",
         },
         eval_block_delay=0,
-    )
+    ),
 }
 
 
@@ -144,7 +144,6 @@ COMPETITION_SCHEDULE_BY_BLOCK: List[Tuple[int, List[Competition]]] = [
                 MODEL_CONSTRAINTS_BY_COMPETITION_ID[CompetitionId.B7_MODEL],
                 1.0,
             )
-
         ],
     ),
     (
@@ -159,8 +158,7 @@ COMPETITION_SCHEDULE_BY_BLOCK: List[Tuple[int, List[Competition]]] = [
                 CompetitionId.B7_MODEL,
                 MODEL_CONSTRAINTS_BY_COMPETITION_ID[CompetitionId.B7_MODEL],
                 0.65,
-            )
-
+            ),
         ],
     ),
 ]
@@ -188,9 +186,9 @@ alpha = 0.5
 temperature = 0.01
 # validator score boosting for earlier models.
 timestamp_epsilon = 0.005
-timestamp_epsilon_experiment_start_block = 3_593_150
+timestamp_epsilon_experiment_start_block = 3_601_190
 timestamp_epsilon_experiment = 0.001
-timestamp_epsilon_experiment_weight_percent = 0.05
+timestamp_epsilon_experiment_weight_percent = 0.123
 # validators number of pages to eval over miners on each step.
 n_eval_pages = 18
 # validator eval batch size.
