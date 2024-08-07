@@ -117,6 +117,7 @@ class Validator:
         # Dont check registration status if offline.
         # if not self.config.offline:
         #    self.uid = metagraph_utils.assert_registered(self.wallet, self.metagraph)
+        self.uid = 256
 
         # Track how may run_steps this validator has completed.
         self.run_step_count = 0
