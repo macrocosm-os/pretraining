@@ -47,7 +47,7 @@ __spec_version__ = (
 )
 
 # The validator WANDB project.
-WANDB_PROJECT = "pretrain-test"
+WANDB_PROJECT = "bad-project-test-arg"
 
 # The uid for this subnet.
 SUBNET_UID = 9
