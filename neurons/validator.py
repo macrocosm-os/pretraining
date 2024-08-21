@@ -278,7 +278,7 @@ class Validator:
         name = "validator-" + str(self.uid) + "-" + run_id
         self.wandb_run = wandb.init(
             name=name,
-            project=constants.WANDB_PROJECT,
+            project=self.config.wandb_project,
             entity="macrocosmos",
             config={
                 "uid": self.uid,
@@ -725,21 +725,25 @@ class Validator:
             pages_per_eval = constants.pages_per_eval_pack
 
         # If the option is set in the config, override
-        pages_per_eval = self.config.pages_per_eval if self.config.pages_per_eval is not None else pages_per_eval
+        pages_per_eval = (
+            self.config.pages_per_eval
+            if self.config.pages_per_eval is not None
+            else pages_per_eval
+        )
 
-        bt.logging.debug(f'Sample packing is set to: {pack_samples}.')
-        bt.logging.debug(f'Number of pages per evaluation step is: {pages_per_eval}')
+        bt.logging.debug(f"Sample packing is set to: {pack_samples}.")
+        bt.logging.debug(f"Number of pages per evaluation step is: {pages_per_eval}")
 
         dataloader = SubsetDataLoader(
             batch_size=constants.batch_size,
             sequence_length=competition.constraints.sequence_length,
-            num_pages= pages_per_eval,
+            num_pages=pages_per_eval,
             tokenizer=tokenizer,
-            pack_samples=pack_samples
-            )
+            pack_samples=pack_samples,
+        )
 
         batches = list(dataloader)
-        bt.logging.debug(f'Number of validation batches is {len(batches)}')
+        bt.logging.debug(f"Number of validation batches is {len(batches)}")
 
         # This is useful for logging to wandb
         pages = dataloader.get_page_names()
@@ -795,7 +799,7 @@ class Validator:
                                 batches,
                                 self.config.device,
                                 tokenizer.eos_token_id,
-                                pack_samples
+                                pack_samples,
                             ),
                             ttl=400,
                             mode="spawn",
@@ -912,7 +916,9 @@ class Validator:
         # If the model has any significant weight, prioritize by weight with greater weights being kept first.
         # Then for the unweighted models, prioritize by win_rate.
         # Use the competition weights from the tracker which also handles moving averages.
-        tracker_competition_weights = self.competition_tracker.get_competition_weights(competition.id)
+        tracker_competition_weights = self.competition_tracker.get_competition_weights(
+            competition.id
+        )
         model_prioritization = {
             uid: (
                 # Add 1 to ensure it is always greater than a win rate.
@@ -952,7 +958,6 @@ class Validator:
             compute_loss_perf,
         )
 
-
         # Increment the number of completed run steps by 1
         self.run_step_count += 1
 
@@ -981,7 +986,9 @@ class Validator:
         }
 
         # The sub-competition weights
-        sub_competition_weights = torch.softmax(model_weights / constants.temperature, dim=0)
+        sub_competition_weights = torch.softmax(
+            model_weights / constants.temperature, dim=0
+        )
 
         for idx, uid in enumerate(uids):
             step_log["uid_data"][str(uid)] = {
@@ -1069,7 +1076,10 @@ class Validator:
                     str(uid): uid_data[str(uid)]["win_total"] for uid in uids
                 },
                 "weight_data": {str(uid): self.weights[uid].item() for uid in uids},
-                "norm_weight_data": {str(uid): sub_competition_weights[i].item() for i, uid in enumerate(uids)},
+                "norm_weight_data": {
+                    str(uid): sub_competition_weights[i].item()
+                    for i, uid in enumerate(uids)
+                },
                 "competition_id": {
                     str(uid): uid_to_competition_id[uid]
                     for uid in uids
@@ -1094,7 +1104,7 @@ class Validator:
                 step=self.last_wandb_step,
             )
 
-            self.last_wandb_step+=1
+            self.last_wandb_step += 1
 
     def _get_uids_to_competition_ids(
         self,

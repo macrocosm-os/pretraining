@@ -21,6 +21,12 @@ def validator_config():
         help="Turn off wandb logging.",
     )
     parser.add_argument(
+        "--wandb_project",
+        type=str,
+        default=constants.WANDB_PROJECT,
+        help="The wandb project to log to.",
+    )
+    parser.add_argument(
         "--blocks_per_epoch",
         type=int,
         default=50,
