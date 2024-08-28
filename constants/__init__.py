@@ -24,7 +24,7 @@ from taoverse.model.competition.data import (
     ModelConstraints,
     NormValidationConstraints,
 )
-from taoverse.model.competition.epsilon import FixedEpsilon
+from taoverse.model.competition.epsilon import FixedEpsilon, LinearDecay
 from competitions.data import CompetitionId
 
 from typing import Dict, List, Tuple
@@ -118,7 +118,7 @@ MODEL_CONSTRAINTS_BY_COMPETITION_ID: Dict[CompetitionId, ModelConstraints] = {
             "attn_implementation": "flash_attention_2",
         },
         eval_block_delay=0,
-        epsilon_func=FixedEpsilon(0.005),
+        epsilon_func=FixedEpsilon(0.01),
         max_bytes=15 * 1024 * 1024 * 1024,
     ),
     CompetitionId.B3_MODEL: ModelConstraints(
@@ -132,7 +132,7 @@ MODEL_CONSTRAINTS_BY_COMPETITION_ID: Dict[CompetitionId, ModelConstraints] = {
             "attn_implementation": "flash_attention_2",
         },
         eval_block_delay=0,
-        epsilon_func=FixedEpsilon(0.005),
+        epsilon_func=LinearDecay(0.5, 0.1, 100),
         max_bytes=15 * 1024 * 1024 * 1024,
     ),
 }

@@ -96,7 +96,7 @@ class Validator:
         self.subnet_metagraph_syncer = MetagraphSyncer(
             self.subtensor,
             config={
-                self.config.netuid: dt.timedelta(minutes=20).total_seconds(),
+                self.config.netuid: dt.timedelta(minutes=5).total_seconds(),
             },
             lite=False,
         )
