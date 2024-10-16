@@ -49,6 +49,7 @@ class SubsetLoader(IterableDataset):
         self.pack_samples = pack_samples
 
         self.num_rows_per_page = 100
+        self.duplicate_page_threshold = 100
 
         # Buffer to hold pages loaded from the api
         self.buffer = []
@@ -168,30 +169,45 @@ class SubsetFineWebEdu2Loader(SubsetLoader):
         # We first need to fetch the data and fill the loader buffer.
         # Since some sample files are broken, we first try to find `num_pages`
         # responsive samples, then we add them to the found pages `self.pages`
+        # Note that this could loop infinitely
         if self.num_pages:
             self._fetch_data_to_buffer(self.num_pages)
 
     def _fetch_data_to_buffer(self, num_pages):
         """
-        Randomly sample pages and add their data to the buffer.
+        Randomly sample unique pages and add their data to the buffer.
         If a page is inaccessible, another one is sampled.
         this method sets the `pages` property
         """
 
         self.pages = []
         attempts = 0
+        duplicates = 0
 
         while len(self.pages) < num_pages:
 
             # randomly sample one page
-            config_name, page, split = self.get_random_pages(num_pages=1)[0]
+            page = self.get_random_pages(num_pages=1)[0]
+
+            # skip the page if we already have it
+            if page in self.pages:
+                duplicates += 1
+                if duplicates >= self.duplicate_page_threshold:
+                    bt.logging.debug(
+                        f"Hit duplicate page threshold of {self.duplicate_page_threshold}. Stopping early at: {len(self.pages)} pages."
+                    )
+                    break
+                else:
+                    continue
+
+            config_name, page_row_start, split = page
 
             # Create the request parameters
             params = dict(
                 dataset=self.name,
                 config=config_name,
                 split=split,
-                offset=page,
+                offset=page_row_start,
                 limit=self.num_rows_per_page,
             )
 
@@ -201,7 +217,7 @@ class SubsetFineWebEdu2Loader(SubsetLoader):
                 response.raise_for_status()  # This will raise an HTTPError if the HTTP request returned an unsuccessful status code
 
                 # Add the page since the request was successful
-                self.pages.append((config_name, page, split))
+                self.pages.append(page)
 
                 for row in response.json()["rows"]:
                     content = row["row"]["text"]
@@ -231,21 +247,37 @@ class SubsetFineWebEdu2Loader(SubsetLoader):
 
     def fetch_data_to_rows(self, num_pages):
 
+        # This explicitly does not set the pages property, simply keeping track for duplicates.
+        # We also use a set here as the order does not matter.
+        downloaded_pages = set()
         rows = []
         attempts = 0
-        num_downloaded_pages = 0
+        duplicates = 0
 
-        while num_downloaded_pages < num_pages:
+        while len(downloaded_pages) < num_pages:
 
             # randomly sample one page
-            config_name, page, split = self.get_random_pages(num_pages=1)[0]
+            page = self.get_random_pages(num_pages=1)[0]
+
+            # skip the page if we already have it
+            if page in downloaded_pages:
+                duplicates += 1
+                if duplicates >= self.duplicate_page_threshold:
+                    bt.logging.debug(
+                        f"Hit duplicate page threshold of {self.duplicate_page_threshold}. Stopping early at: {len(downloaded_pages)} pages."
+                    )
+                    break
+                else:
+                    continue
+
+            config_name, page_row_start, split = page
 
             # Create the request parameters
             params = dict(
                 dataset=self.name,
                 config=config_name,
                 split=split,
-                offset=page,
+                offset=page_row_start,
                 limit=self.num_rows_per_page,
             )
 
@@ -254,7 +286,7 @@ class SubsetFineWebEdu2Loader(SubsetLoader):
 
                 response.raise_for_status()  # This will raise an HTTPError if the HTTP request returned an unsuccessful status code
 
-                num_downloaded_pages += 1
+                downloaded_pages.add(page)
 
                 for row in response.json()["rows"]:
                     rows.append(row["row"]["text"])
