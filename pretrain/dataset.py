@@ -49,6 +49,7 @@ class SubsetLoader(IterableDataset):
         self.pack_samples = pack_samples
 
         self.num_rows_per_page = 100
+        self.duplicate_page_threshold = 100
 
         # Buffer to hold pages loaded from the api
         self.buffer = []
@@ -181,6 +182,7 @@ class SubsetFineWebEdu2Loader(SubsetLoader):
 
         self.pages = []
         attempts = 0
+        duplicates = 0
 
         while len(self.pages) < num_pages:
 
@@ -189,7 +191,14 @@ class SubsetFineWebEdu2Loader(SubsetLoader):
 
             # skip the page if we already have it
             if page in self.pages:
-                continue
+                duplicates += 1
+                if duplicates >= self.duplicate_page_threshold:
+                    bt.logging.debug(
+                        f"Hit duplicate page threshold of {self.duplicate_page_threshold}. Stopping early at: {len(self.pages)} pages."
+                    )
+                    break
+                else:
+                    continue
 
             config_name, page_row_start, split = page
 
@@ -243,6 +252,7 @@ class SubsetFineWebEdu2Loader(SubsetLoader):
         downloaded_pages = set()
         rows = []
         attempts = 0
+        duplicates = 0
 
         while len(downloaded_pages) < num_pages:
 
@@ -251,7 +261,14 @@ class SubsetFineWebEdu2Loader(SubsetLoader):
 
             # skip the page if we already have it
             if page in downloaded_pages:
-                continue
+                duplicates += 1
+                if duplicates >= self.duplicate_page_threshold:
+                    bt.logging.debug(
+                        f"Hit duplicate page threshold of {self.duplicate_page_threshold}. Stopping early at: {len(downloaded_pages)} pages."
+                    )
+                    break
+                else:
+                    continue
 
             config_name, page_row_start, split = page
 

@@ -76,6 +76,36 @@ class TestDataset(unittest.TestCase):
         self.assertEqual(len(rows), NUM_PAGES * dataloader.num_rows_per_page)
         self.assertEqual(len(set(rows)), NUM_PAGES * dataloader.num_rows_per_page)
 
+    def test_fineweb_loader_duplicate_threshold(self):
+        """Tests that the fineweb loader stops loading after hitting too many duplciate pages."""
+        # Try to get 6 pages from a set that only contains 5 pages worth.
+        NUM_PAGES = 6
+        NUM_PAGES_ACTUAL = 5
+        CONFIG_DATA = {"CC-MAIN-2013-20": {"num_rows": 499, "split": "train"}}
+
+        # Load a tokenizer
+        tokenizer = pt.model.load_tokenizer(
+            MODEL_CONSTRAINTS_BY_COMPETITION_ID[CompetitionId.B7_MODEL],
+            cache_dir=config.model_dir,
+        )
+
+        dataloader = pt.dataset.SubsetFineWebEdu2Loader(
+            batch_size=None, sequence_length=4092, num_pages=None, tokenizer=tokenizer
+        )
+
+        dataloader.configs_data = CONFIG_DATA
+
+        # Only fetch these once for performance, although for better correctness should consider running in a loop.
+        dataloader._fetch_data_to_buffer(NUM_PAGES)
+        self.assertEqual(len(dataloader.pages), NUM_PAGES_ACTUAL)
+        self.assertEqual(len(set(dataloader.pages)), NUM_PAGES_ACTUAL)
+
+        rows = dataloader.fetch_data_to_rows(NUM_PAGES)
+        self.assertEqual(len(rows), NUM_PAGES_ACTUAL * dataloader.num_rows_per_page)
+        self.assertEqual(
+            len(set(rows)), NUM_PAGES_ACTUAL * dataloader.num_rows_per_page
+        )
+
     def test_fineweb_loader_page_offset(self):
         """Tests that the fineweb loader will only generate page starts that are num rows per pages apart."""
         # Load a tokenizer
