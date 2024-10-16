@@ -2,6 +2,7 @@ import unittest
 
 import numpy as np
 
+from collections import defaultdict
 from competitions.data import CompetitionId
 from constants import MODEL_CONSTRAINTS_BY_COMPETITION_ID
 import pretrain as pt
@@ -70,11 +71,14 @@ class TestDataset(unittest.TestCase):
         }
 
         # Ensure get random pages returns only 0, 100, 200, 300, 400 and 500
-        expected_page_starts = {0, 100, 200, 300, 400, 500}
+        expected_page_starts_1 = {0, 100, 200, 300, 400, 500}
+        page_starts_1 = defaultdict(int)
         for _ in range(1000):
             random_pages = dataloader.get_random_pages(1)
             _, page_start, _ = random_pages[0]
-            self.assertTrue(page_start in expected_page_starts)
+            page_starts_1[page_start] += 1
+
+        self.assertEqual(set(page_starts_1.keys()), expected_page_starts_1)
 
         # Create a fake configs data with only 598 rows.
         dataloader.configs_data = {
@@ -82,8 +86,11 @@ class TestDataset(unittest.TestCase):
         }
 
         # Ensure get random pages returns only 0, 100, 200, 300, and 400 (since 500-598 is not 100 rows)
-        expected_page_starts = {0, 100, 200, 300, 400}
+        expected_page_starts_2 = {0, 100, 200, 300, 400}
+        page_starts_2 = defaultdict(int)
         for _ in range(1000):
             random_pages = dataloader.get_random_pages(1)
             _, page_start, _ = random_pages[0]
-            self.assertTrue(page_start in expected_page_starts)
+            page_starts_2[page_start] += 1
+
+        self.assertEqual(set(page_starts_2.keys()), expected_page_starts_2)

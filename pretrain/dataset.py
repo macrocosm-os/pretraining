@@ -277,8 +277,8 @@ class SubsetFineWebEdu2Loader(SubsetLoader):
 
     def get_random_pages(self, num_pages):
         """
-        Randomly sample one page.
-        A page is a row number of a given split of a given dataset dump.
+        Randomly sample num_pages.
+        A page is a row number of a given split of a given dataset dump offset by num_rows_per_page.
         """
         pages = []
 
