@@ -33,7 +33,7 @@ class TestDataset(unittest.TestCase):
         )
 
         # Assert that the number of pages loaded successfully are the one required
-        assert len(dataloader_1.pages) == NUM_PAGES
+        self.assertEqual(len(dataloader_1.pages), NUM_PAGES)
 
         # Now create a second loader without automatic page loading
         dataloader_2 = pt.dataset.SubsetFineWebEdu2Loader(
@@ -44,10 +44,37 @@ class TestDataset(unittest.TestCase):
         dataloader_2.fetch_data_for_pages(pages=dataloader_1.pages)
 
         # Assert both dataloaders have the same pages
-        assert set(dataloader_1.pages) == set(dataloader_2.pages)
+        self.assertEqual(set(dataloader_1.pages), set(dataloader_2.pages))
 
         # Assert that both have the same buffers
-        assert np.array_equal(dataloader_1.buffer, dataloader_2.buffer)
+        self.assertTrue(np.array_equal(dataloader_1.buffer, dataloader_2.buffer))
+
+    def test_fineweb_loader_unique_pages(self):
+        """Tests that the fineweb loader only loads unique pages."""
+        # Ensure we get all 5 possible pages of the aritificially shortened data.
+        NUM_PAGES = 5
+        CONFIG_DATA = {"CC-MAIN-2013-20": {"num_rows": 499, "split": "train"}}
+
+        # Load a tokenizer
+        tokenizer = pt.model.load_tokenizer(
+            MODEL_CONSTRAINTS_BY_COMPETITION_ID[CompetitionId.B7_MODEL],
+            cache_dir=config.model_dir,
+        )
+
+        dataloader = pt.dataset.SubsetFineWebEdu2Loader(
+            batch_size=None, sequence_length=4092, num_pages=None, tokenizer=tokenizer
+        )
+
+        dataloader.configs_data = CONFIG_DATA
+
+        # Only fetch these once for performance, although for better correctness should consider running in a loop.
+        dataloader._fetch_data_to_buffer(NUM_PAGES)
+        self.assertEqual(len(dataloader.pages), NUM_PAGES)
+        self.assertEqual(len(set(dataloader.pages)), NUM_PAGES)
+
+        rows = dataloader.fetch_data_to_rows(NUM_PAGES)
+        self.assertEqual(len(rows), NUM_PAGES * dataloader.num_rows_per_page)
+        self.assertEqual(len(set(rows)), NUM_PAGES * dataloader.num_rows_per_page)
 
     def test_fineweb_loader_page_offset(self):
         """Tests that the fineweb loader will only generate page starts that are num rows per pages apart."""
