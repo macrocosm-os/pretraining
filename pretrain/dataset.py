@@ -33,13 +33,14 @@ class SubsetLoader(IterableDataset):
 
     # TODO: Make this class abstract
     """
+
     def __init__(
-            self,
-            batch_size=None,
-            sequence_length=None,
-            num_pages=None,
-            tokenizer: AutoTokenizer=None,
-            pack_samples: bool=False,
+        self,
+        batch_size=None,
+        sequence_length=None,
+        num_pages=None,
+        tokenizer: AutoTokenizer = None,
+        pack_samples: bool = False,
     ):
         self.batch_size = batch_size
         self.sequence_length = sequence_length
@@ -72,7 +73,6 @@ class SubsetLoader(IterableDataset):
         for page in self.pages:
             self._fetch_data_for_page(page)
 
-
     def _get_pad_size(self, input_ids):
         """
         Get the number of tokens to be padded to the sample to match
@@ -85,8 +85,8 @@ class SubsetLoader(IterableDataset):
 
         sample_size = len(input_ids)
 
-        remainder = (sample_size % self.sequence_length)
-        pad_size = (self.sequence_length - remainder)
+        remainder = sample_size % self.sequence_length
+        pad_size = self.sequence_length - remainder
 
         # Apply modulo again to guarantee a pad size of 0 if remainder is 0
         pad_size = pad_size % self.sequence_length
@@ -99,17 +99,14 @@ class SubsetLoader(IterableDataset):
         it to the `self.padded_buffer`.
         """
 
-        while (
-                self.buffer
-                and len(self.padded_buffer) < self.sequence_length
-        ):
+        while self.buffer and len(self.padded_buffer) < self.sequence_length:
 
             input_ids = []
 
             # search for EOS token index and cut the buffer at it.
             EOS_index = self.buffer.index(self.tokenizer.eos_token_id)
-            input_ids = self.buffer[:EOS_index+1]
-            self.buffer =self.buffer[EOS_index+1:]
+            input_ids = self.buffer[: EOS_index + 1]
+            self.buffer = self.buffer[EOS_index + 1 :]
 
             self.used_buffer += input_ids
 
@@ -117,7 +114,9 @@ class SubsetLoader(IterableDataset):
             self.padded_buffer += input_ids[:-1]
 
             # Pad
-            self.padded_buffer += [self.tokenizer.eos_token_id] * self._get_pad_size(input_ids=input_ids[:-1])
+            self.padded_buffer += [self.tokenizer.eos_token_id] * self._get_pad_size(
+                input_ids=input_ids[:-1]
+            )
 
     def __iter__(self):
         self.buffer = self.used_buffer + self.buffer
@@ -152,18 +151,16 @@ class SubsetFineWebEdu2Loader(SubsetLoader):
     retry_delay: int = 5  # Seconds to wait between retries
 
     def __init__(
-            self,
-            batch_size=None,
-            sequence_length=None,
-            num_pages=None,
-            tokenizer: AutoTokenizer=None,
-            pack_samples: bool=False,
+        self,
+        batch_size=None,
+        sequence_length=None,
+        num_pages=None,
+        tokenizer: AutoTokenizer = None,
+        pack_samples: bool = False,
     ):
-        super().__init__(batch_size,
-                         sequence_length,
-                         num_pages,
-                         tokenizer,
-                         pack_samples)
+        super().__init__(
+            batch_size, sequence_length, num_pages, tokenizer, pack_samples
+        )
 
         # Get the dataset configs and their row sizes
         self.configs_data = self.fetch_dataset_configs()
@@ -173,7 +170,6 @@ class SubsetFineWebEdu2Loader(SubsetLoader):
         # responsive samples, then we add them to the found pages `self.pages`
         if self.num_pages:
             self._fetch_data_to_buffer(self.num_pages)
-
 
     def _fetch_data_to_buffer(self, num_pages):
         """
@@ -188,14 +184,15 @@ class SubsetFineWebEdu2Loader(SubsetLoader):
         while len(self.pages) < num_pages:
 
             # randomly sample one page
-            config_name, page, split = self.get_random_pages(num_pages = 1)[0]
+            config_name, page, split = self.get_random_pages(num_pages=1)[0]
 
             # Create the request parameters
-            params = dict(dataset=self.name,
-                          config=config_name,
-                          split=split,
-                          offset=page,
-                          limit=self.num_rows_per_page
+            params = dict(
+                dataset=self.name,
+                config=config_name,
+                split=split,
+                offset=page,
+                limit=self.num_rows_per_page,
             )
 
             try:
@@ -241,14 +238,15 @@ class SubsetFineWebEdu2Loader(SubsetLoader):
         while num_downloaded_pages < num_pages:
 
             # randomly sample one page
-            config_name, page, split = self.get_random_pages(num_pages = 1)[0]
+            config_name, page, split = self.get_random_pages(num_pages=1)[0]
 
             # Create the request parameters
-            params = dict(dataset=self.name,
-                          config=config_name,
-                          split=split,
-                          offset=page,
-                          limit=self.num_rows_per_page
+            params = dict(
+                dataset=self.name,
+                config=config_name,
+                split=split,
+                offset=page,
+                limit=self.num_rows_per_page,
             )
 
             try:
@@ -275,7 +273,6 @@ class SubsetFineWebEdu2Loader(SubsetLoader):
                     )
                     raise
 
-
         return rows
 
     def get_random_pages(self, num_pages):
@@ -287,16 +284,22 @@ class SubsetFineWebEdu2Loader(SubsetLoader):
 
         for _ in range(num_pages):
 
-            # Choose a random config
+            # Choose a random config.
             config_name = random.choice(list(self.configs_data.keys()))
 
-            # Choose a random page (row)
-            page = random.randint(0,
-                                  self.configs_data[config_name]['num_rows'] - 1 - self.num_rows_per_page)
+            # Choose a random page start.
+            # We do so by chunking the rows of the config data into N pages of length num_rows_per_page.
+            data_row_count = self.configs_data[config_name]["num_rows"]
+            # Add 1 to the row count as we are 0 indexed.
+            data_page_count = (data_row_count + 1) // self.num_rows_per_page
+            # Select a random page start by taking the randomly selected page and multiplying by num_rows_per_page.
+            selected_page_start = (
+                random.randint(0, data_page_count - 1) * self.num_rows_per_page
+            )
 
-            split = self.configs_data[config_name]['split']
+            split = self.configs_data[config_name]["split"]
 
-            pages.append((config_name, page, split))
+            pages.append((config_name, selected_page_start, split))
 
         return pages
 
@@ -308,9 +311,11 @@ class SubsetFineWebEdu2Loader(SubsetLoader):
 
         page_names = []
 
-        if hasattr(self, 'pages'):
-            page_names = [f'{cfg_name}_{num_rows}_{split}' for
-                           cfg_name, num_rows, split in self.pages]
+        if hasattr(self, "pages"):
+            page_names = [
+                f"{cfg_name}_{num_rows}_{split}"
+                for cfg_name, num_rows, split in self.pages
+            ]
 
         return page_names
 
@@ -322,9 +327,7 @@ class SubsetFineWebEdu2Loader(SubsetLoader):
         a dict of the number of rows and the split as values.
         """
         # Request parameters
-        params = dict(
-            dataset = self.name
-            )
+        params = dict(dataset=self.name)
 
         attempt = 0
         while attempt < self.retry_limit:
@@ -333,15 +336,18 @@ class SubsetFineWebEdu2Loader(SubsetLoader):
                 response.raise_for_status()  # This will raise an HTTPError if the HTTP request returned an unsuccessful status code
 
                 # Extract the configs dict
-                configs_dict = response.json()['size']['splits']
+                configs_dict = response.json()["size"]["splits"]
 
                 # Now create a dict with config names (except 'default') as
                 # keys, and the number of rows as values
-                configs_data = {entry['config']: {'num_rows': entry['num_rows'] ,
-                                                  'split': entry['split']}
-                                for entry in configs_dict
-                                if entry['config'] != 'default'
-                                }
+                configs_data = {
+                    entry["config"]: {
+                        "num_rows": entry["num_rows"],
+                        "split": entry["split"],
+                    }
+                    for entry in configs_dict
+                    if entry["config"] != "default"
+                }
 
                 return configs_data
 
@@ -367,11 +373,12 @@ class SubsetFineWebEdu2Loader(SubsetLoader):
             config_name, page, split = page
 
             # Create the request parameters
-            params = dict(dataset=self.name,
-                          config=config_name,
-                          split=split,
-                          offset=page,
-                          limit=self.num_rows_per_page
+            params = dict(
+                dataset=self.name,
+                config=config_name,
+                split=split,
+                offset=page,
+                limit=self.num_rows_per_page,
             )
 
             try:
@@ -408,18 +415,16 @@ class SubsetFalconLoader(SubsetLoader):
     base_url: str = "https://datasets-server.huggingface.co/rows"
 
     def __init__(
-            self,
-            batch_size,
-            sequence_length,
-            num_pages=None,
-            tokenizer: AutoTokenizer=None,
-            pack_samples: bool=False,
+        self,
+        batch_size,
+        sequence_length,
+        num_pages=None,
+        tokenizer: AutoTokenizer = None,
+        pack_samples: bool = False,
     ):
-        super().__init__(batch_size,
-                         sequence_length,
-                         num_pages,
-                         tokenizer,
-                         pack_samples)
+        super().__init__(
+            batch_size, sequence_length, num_pages, tokenizer, pack_samples
+        )
 
         self.params = {
             "dataset": self.name,
@@ -434,7 +439,6 @@ class SubsetFalconLoader(SubsetLoader):
         if self.num_pages:
             pages = self._sample_pages()
             self.fetch_data_for_pages(pages)
-
 
     def _fetch_data_for_page(self, page):
         self.params["offset"] = page
@@ -468,13 +472,9 @@ class SubsetFalconLoader(SubsetLoader):
         """
         Randomly sample pages to be used in validation
         """
-        pages = [
-            random.randint(1, self.max_pages)
-            for _ in range(self.num_pages)
-        ]
+        pages = [random.randint(1, self.max_pages) for _ in range(self.num_pages)]
 
         return pages
-
 
     def get_page_names(self):
         """
@@ -483,7 +483,7 @@ class SubsetFalconLoader(SubsetLoader):
         """
         page_names = []
 
-        if hasattr(self, 'pages'):
+        if hasattr(self, "pages"):
             page_names = self.pages
 
         return page_names
