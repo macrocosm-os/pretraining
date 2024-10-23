@@ -800,22 +800,26 @@ class Validator:
             competition.constraints, cache_dir=self.config.model_dir
         )
 
-        if cur_block >= constants.sample_pack_block:
-            pack_samples = True
-            pages_per_eval = constants.pages_per_eval_pack
-        else:
-            pack_samples = False
-            pages_per_eval = constants.pages_per_eval_unpack
+        # Use sample packing.
+        pack_samples = True
 
-        # If the option is set in the config, override
+        # If the option is set in the config, override.
         pages_per_eval = (
             self.config.pages_per_eval
             if self.config.pages_per_eval is not None
-            else pages_per_eval
+            else constants.pages_per_eval_pack
         )
 
-        bt.logging.debug(f"Sample packing is set to: {pack_samples}.")
-        bt.logging.debug(f"Number of pages per evaluation step is: {pages_per_eval}")
+        # Try to synchronize the data used by validators.
+        try:
+            seed = metagraph_utils.get_hash_of_sync_block(
+                self.subtensor, constants.SYNC_BLOCK_CADENCE
+            )
+        except:
+            seed = None
+
+        bt.logging.debug(f"Number of pages per evaluation step is: {pages_per_eval}.")
+        bt.logging.debug(f"Seed used for loading data is: {seed}.")
 
         dataloader = SubsetDataLoader(
             batch_size=constants.batch_size,
@@ -823,6 +827,7 @@ class Validator:
             num_pages=pages_per_eval,
             tokenizer=tokenizer,
             pack_samples=pack_samples,
+            seed=seed,
         )
 
         batches = list(dataloader)

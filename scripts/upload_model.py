@@ -78,7 +78,7 @@ def get_config():
 async def main(config: bt.config):
     # Create bittensor objects.
     bt.logging(config=config)
-    
+
     wallet = bt.wallet(config=config)
     subtensor = bt.subtensor(config=config)
     metagraph = subtensor.metagraph(config.netuid)
@@ -108,7 +108,7 @@ async def main(config: bt.config):
     await pt.mining.push(
         model,
         config.hf_repo_id,
-        wallet,        
+        wallet,
         config.competition_id,
         metadata_store=chain_metadata_store,
     )
@@ -122,4 +122,3 @@ if __name__ == "__main__":
     else:
         print(config)
         asyncio.run(main(config))
-
