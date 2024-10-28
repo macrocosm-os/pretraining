@@ -11,4 +11,4 @@ transformers==4.44.1
 wandb
 datasets
 flash-attn
-taoverse==1.0.8
+taoverse==1.0.9

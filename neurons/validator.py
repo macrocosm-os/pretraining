@@ -86,12 +86,27 @@ class PerUIDEvalState:
     # The hugging face repo name.
     repo_name: str = "Unknown"
 
-    # The losses per batch.
-    losses: typing.List[float] = dataclasses.field(default=None)
+    # The losses per batch per dataset.
+    losses: typing.Dict[str, typing.List[float]] = dataclasses.field(
+        default_factory=lambda: defaultdict(list)
+    )
 
     def avg_loss(self) -> float:
-        """Safely computes the average loss from a list of losses."""
-        return sum(self.losses) / len(self.losses) if self.losses else math.inf
+        """Safely computes the average loss across all dataset loss lists."""
+        all_losses = [loss for loss_list in self.losses.values() for loss in loss_list]
+        return sum(all_losses) / len(all_losses) if all_losses else math.inf
+
+    def avg_dataset_loss(self, dataset_name: str) -> float:
+        """Safely computes the average loss from a list of losses for a specific dataset."""
+        return (
+            sum(self.losses[dataset_name]) / len(self.losses[dataset_name])
+            if self.losses[dataset_name]
+            else math.inf
+        )
+
+    def avg_loss_per_dataset(self) -> typing.Dict[str, float]:
+        """Safely computes the average loss per dataset."""
+        return {k: (sum(v) / len(v) if v else math.inf) for k, v in self.losses.items()}
 
 
 class Validator:
@@ -160,7 +175,6 @@ class Validator:
         self.weights = torch.zeros_like(torch.tensor(self.metagraph.S))
         self.global_step = 0
         self.last_epoch = self.metagraph.block.item()
-        self.last_wandb_step = 0
 
         self.uids_to_eval: typing.Dict[CompetitionId, typing.Set] = defaultdict(set)
 
@@ -437,7 +451,9 @@ class Validator:
                     )
                     if competition is not None and not is_queued_for_eval:
                         eval_history = (
-                            self.model_tracker.get_eval_results_for_miner_hotkey(hotkey)
+                            self.model_tracker.get_eval_results_for_miner_hotkey(
+                                hotkey, competition.id
+                            )
                         )
                         force_sync = should_retry_model(
                             competition.constraints.epsilon_func,
@@ -448,6 +464,32 @@ class Validator:
                             bt.logging.debug(
                                 f"Force downloading model for UID {next_uid} because it should be retried. Eval_history={eval_history}"
                             )
+
+                        # Special case for 14B*. We want to retry if the model is competitive in either 14B or 14B*.
+                        if competition.id == CompetitionId.B14_MODEL:
+                            # Check that 14B* is currently running.
+                            competition_14b = (
+                                competition_utils.get_competition_for_block(
+                                    CompetitionId.B14_MODEL_MULTI_DATASET,
+                                    curr_block,
+                                    constants.COMPETITION_SCHEDULE_BY_BLOCK,
+                                )
+                            )
+                            if competition_14b is not None:
+                                eval_history_14b_star = self.model_tracker.get_eval_results_for_miner_hotkey(
+                                    hotkey, CompetitionId.B14_MODEL_MULTI_DATASET
+                                )
+                                force_sync_14b_star = should_retry_model(
+                                    competition_14b.constraints.epsilon_func,
+                                    curr_block,
+                                    eval_history_14b_star,
+                                )
+                                if force_sync_14b_star:
+                                    # Even if it is already logging for 14B, also log for 14B*.
+                                    bt.logging.debug(
+                                        f"Force downloading model for UID {next_uid} because it should be retried for 14B*. Eval_history={eval_history_14b_star}"
+                                    )
+                                    force_sync = True
 
                 # Compare metadata and tracker, syncing new model from remote store to local if necessary.
                 try:
@@ -462,6 +504,7 @@ class Validator:
                 except MinerMisconfiguredError as e:
                     self.model_tracker.on_model_evaluated(
                         hotkey,
+                        0,
                         EvalResult(
                             block=curr_block,
                             score=math.inf,
@@ -544,8 +587,7 @@ class Validator:
         for uid in uids_to_add:
             # Check when we last evaluated this model.
             hotkey = metagraph.hotkeys[uid]
-            eval_history = self.model_tracker.get_eval_results_for_miner_hotkey(hotkey)
-            last_eval_block = eval_history[-1].block if eval_history else 0
+            last_eval_block = self.model_tracker.get_block_last_evaluated(hotkey) or 0
             curr_block = self._get_current_block()
             if curr_block - last_eval_block >= constants.model_retry_cadence:
                 try:
@@ -563,6 +605,7 @@ class Validator:
                     except MinerMisconfiguredError as e:
                         self.model_tracker.on_model_evaluated(
                             hotkey,
+                            0,
                             EvalResult(
                                 block=curr_block,
                                 score=math.inf,
@@ -762,7 +805,27 @@ class Validator:
 
         # Every validator step should pick a single competition in a round-robin fashion
         competition = competition_schedule[self.global_step % len(competition_schedule)]
+        # If the competition is 14b* we skip it since we run it concurrently with 14b instead.
+        if competition.id == CompetitionId.B14_MODEL_MULTI_DATASET:
+            bt.logging.info(
+                "Skipping step for B14* competition. It will be evaluated as part of the regular B14 competition."
+            )
+            return
+
         bt.logging.info("Starting evaluation for competition: " + str(competition.id))
+
+        running_14b_star = competition.id == CompetitionId.B14_MODEL and any(
+            comp.id == CompetitionId.B14_MODEL_MULTI_DATASET
+            for comp in competition_schedule
+        )
+
+        if running_14b_star:
+            competition_14b_star = competition_utils.get_competition_for_block(
+                comp_id=CompetitionId.B14_MODEL_MULTI_DATASET,
+                block=cur_block,
+                schedule_by_block=constants.COMPETITION_SCHEDULE_BY_BLOCK,
+            )
+            bt.logging.info("Additionally running competition 14B* in parallel to 14B.")
 
         # Add uids with newly updated models to the upcoming batch of evaluations.
         with self.pending_uids_to_eval_lock:
@@ -794,6 +857,18 @@ class Validator:
         # Get the dataloader for this competition
         SubsetDataLoader = constants.DATASET_BY_COMPETITION_ID[competition.id]
         bt.logging.trace(f"Dataset in use: {SubsetDataLoader.name}.")
+
+        if running_14b_star:
+            # This will be set to a copy of 14b later with the additional eval losses appended.
+            uid_to_state_14b_star = defaultdict(PerUIDEvalState)
+
+            # Also get the dataloader for 14b_star.
+            SubsetDataLoader_14b_star = constants.DATASET_BY_COMPETITION_ID[
+                CompetitionId.B14_MODEL_MULTI_DATASET
+            ]
+            bt.logging.trace(
+                f"Additionally using 14b* dataset: {SubsetDataLoader_14b_star.name}."
+            )
 
         # Get the tokenizer
         tokenizer = pt.model.load_tokenizer(
@@ -837,12 +912,35 @@ class Validator:
         # This is useful for logging to wandb
         pages = dataloader.get_page_names()
 
+        bt.logging.debug(f"Competition {competition.id} | Computing losses on {uids}")
+        bt.logging.debug(f"Pages used are {pages}")
+
+        if running_14b_star:
+            dataloader_14b_star = SubsetDataLoader_14b_star(
+                batch_size=constants.batch_size,
+                sequence_length=competition_14b_star.constraints.sequence_length,
+                num_pages=pages_per_eval,
+                tokenizer=tokenizer,
+                pack_samples=pack_samples,
+                random_seed=seed,
+            )
+
+            batches_14b_star = list(dataloader_14b_star)
+            bt.logging.debug(
+                f"Number of 14b* validation batches is {len(batches_14b_star)}"
+            )
+            bt.logging.debug(f"14b* Batch size is {len(batches_14b_star[0])}")
+
+            # This is useful for logging to wandb
+            pages_14b_star = dataloader_14b_star.get_page_names()
+
+            bt.logging.debug(f"14b* Pages used are {pages_14b_star}")
+
+            compute_loss_perf_14b_star = PerfMonitor("Eval: Compute loss 14b star")
+
         # Prepare evaluation.
         kwargs = competition.constraints.kwargs.copy()
         kwargs["use_cache"] = True
-
-        bt.logging.debug(f"Competition {competition.id} | Computing losses on {uids}")
-        bt.logging.debug(f"Pages used are {pages}")
 
         load_model_perf = PerfMonitor("Eval: Load model")
         compute_loss_perf = PerfMonitor("Eval: Compute loss")
@@ -850,6 +948,10 @@ class Validator:
         for uid_i in uids:
             # This variable should be overwritten below if the model has metadata.
             losses: typing.List[float] = [math.inf for _ in range(len(batches))]
+            if running_14b_star:
+                losses_14b_star: typing.List[float] = [
+                    math.inf for _ in range(len(batches_14b_star))
+                ]
 
             bt.logging.trace(f"Getting metadata for uid: {uid_i}.")
 
@@ -899,7 +1001,25 @@ class Validator:
                             ttl=430,
                             mode="spawn",
                         )
-
+                    if running_14b_star:
+                        with compute_loss_perf_14b_star.sample():
+                            try:
+                                losses_14b_star = utils.run_in_subprocess(
+                                    functools.partial(
+                                        pt.validation.compute_losses,
+                                        model_i.pt_model,
+                                        batches_14b_star,
+                                        self.config.device,
+                                        tokenizer.eos_token_id,
+                                        pack_samples,
+                                    ),
+                                    ttl=430,
+                                    mode="spawn",
+                                )
+                            except Exception as e:
+                                bt.logging.error(
+                                    f"Error in eval loop: {e}. Setting 14b* losses for uid: {uid_i} to infinity."
+                                )
                     del model_i
 
                 except Exception as e:
@@ -911,60 +1031,38 @@ class Validator:
                     f"Unable to load the model for {uid_i} or it belongs to another competition. Setting loss to inifinity for this competition."
                 )
 
-            uid_to_state[uid_i].losses = losses
-            average_model_loss = sum(losses) / len(losses)
+            uid_to_state[uid_i].losses[SubsetDataLoader.name] = losses
             bt.logging.trace(
-                f"Computed model losses for uid:{uid_i} with average loss: {average_model_loss}"
+                f"Computed model losses for uid:{uid_i} with average loss: {uid_to_state[uid_i].avg_loss()}"
             )
 
-        # Compute wins and win rates per uid.
-        # Take the average loss across all batches for comparison of best model.
-        uid_to_average_loss = {
-            uid: state.avg_loss() for uid, state in uid_to_state.items()
-        }
-        uid_to_block = {uid: state.block for uid, state in uid_to_state.items()}
-
-        # Filter to the list of uids that may at one point be a top model.
-        competitive_uids = pt.validation.compute_competitive_uids(
-            uid_to_average_loss, uid_to_block, competition.constraints.epsilon_func
-        )
-
-        # Log which models got dropped for the second pass.
-        dropped_uids = [uid for uid in uids if uid not in competitive_uids]
-        if dropped_uids:
-            bt.logging.info(
-                f"The following uids were not included in the win rate calculation because they did not beat the fully decayed loss of any previously submitted model in this eval batch: {dropped_uids}."
-            )
+            if running_14b_star:
+                # Make a deep copy of the current uid_to_state and append the additional losses.
+                uid_to_state_14b_star[uid_i] = copy.deepcopy(uid_to_state[uid_i])
+                uid_to_state_14b_star[uid_i].losses[
+                    SubsetDataLoader_14b_star.name
+                ] = losses_14b_star
+                bt.logging.trace(
+                    f"Computed 14b* model losses for uid:{uid_i} with average loss: {uid_to_state_14b_star[uid_i].avg_loss()}. Details: {uid_to_state_14b_star[uid_i].avg_loss_per_dataset()}"
+                )
 
         # Calculate new wins and win_rate with only the competitive uids considered.
-        wins, win_rate = pt.validation.compute_wins(
-            competitive_uids,
-            uid_to_average_loss,
-            uid_to_block,
-            competition.constraints.epsilon_func,
-            cur_block,
+        wins, win_rate = self._compute_and_set_competition_weights(
+            cur_block=cur_block,
+            uids=uids,
+            uid_to_state=uid_to_state,
+            competition=competition,
         )
 
-        top_uid = max(win_rate, key=win_rate.get)
-        self._record_eval_results(top_uid, cur_block, uid_to_state)
-
-        # Compute softmaxed weights based on win rate.
-        model_weights = torch.tensor(
-            [win_rate.get(uid, 0) for uid in uids], dtype=torch.float32
-        )
-        step_weights = torch.softmax(model_weights / constants.temperature, dim=0)
-
-        # Fill in metagraph sized tensor with the step weights of the evaluated models.
-        with self.metagraph_lock:
-            competition_weights = torch.zeros_like(self.metagraph.S)
-
-        for i, uid_i in enumerate(uids):
-            competition_weights[uid_i] = step_weights[i]
-
-        # Record weights for the current competition.
-        self.competition_tracker.record_competition_weights(
-            competition.id, competition_weights
-        )
+        if running_14b_star:
+            wins_14b_star, win_rate_14b_star = (
+                self._compute_and_set_competition_weights(
+                    cur_block=cur_block,
+                    uids=uids,
+                    uid_to_state=uid_to_state_14b_star,
+                    competition=competition_14b_star,
+                )
+            )
 
         # Get ids for all competitions in the schedule.
         active_competition_ids = set([comp.id for comp in competition_schedule])
@@ -980,6 +1078,12 @@ class Validator:
         tracker_competition_weights = self.competition_tracker.get_competition_weights(
             competition.id
         )
+        if running_14b_star:
+            # Get the weights as if only the 14b and 14b* competition existed for purposes of model prioritization.
+            tracker_competition_weights = self.competition_tracker.get_subnet_weights(
+                [competition, competition_14b_star]
+            )
+
         model_prioritization = {
             uid: (
                 # Add 1 to ensure it is always greater than a win rate.
@@ -995,6 +1099,12 @@ class Validator:
                 : self.config.sample_min
             ]
         )
+
+        # Note when breaking ties of 0 weight models we use the primary dataset in all cases.
+        uid_to_average_loss = {
+            uid: state.avg_loss() for uid, state in uid_to_state.items()
+        }
+
         # Make sure we always keep around sample_min number of models to maintain previous behavior.
         if len(models_to_keep) < self.config.sample_min:
             for uid in sorted(uid_to_average_loss, key=uid_to_average_loss.get):
@@ -1022,15 +1132,104 @@ class Validator:
             uid_to_state,
             self._get_uids_to_competition_ids(),
             pages,
-            model_weights,
             wins,
             win_rate,
             load_model_perf,
             compute_loss_perf,
         )
 
-        # Increment the number of completed run steps by 1
-        self.run_step_count += 1
+        if running_14b_star:
+            bt.logging.debug(compute_loss_perf_14b_star.summary_str())
+
+            uids_to_competition_ids_14b_star = {
+                k: (
+                    CompetitionId.B14_MODEL_MULTI_DATASET.value
+                    if v == CompetitionId.B14_MODEL
+                    else v
+                )
+                for k, v in self._get_uids_to_competition_ids().items()
+            }
+
+            self.log_step(
+                CompetitionId.B14_MODEL_MULTI_DATASET,
+                competition.constraints.epsilon_func,
+                cur_block,
+                uids,
+                uid_to_state_14b_star,
+                uids_to_competition_ids_14b_star,
+                pages_14b_star,
+                wins_14b_star,
+                win_rate_14b_star,
+                load_model_perf,
+                compute_loss_perf_14b_star,
+            )
+
+    def _compute_and_set_competition_weights(
+        self,
+        cur_block: int,
+        uids: typing.List[int],
+        uid_to_state: typing.Dict[int, PerUIDEvalState],
+        competition: Competition,
+    ) -> typing.Tuple[typing.Dict[int, int], typing.Dict[int, float]]:
+        """Computes competition weights including checks for competitiveness and records them internally.
+
+        Args:
+            cur_block (int): The current block.
+            uids (typing.List[int]): All uids being considered during the current evaluation.
+            uid_to_state (typing.Dict[int, PerUIDEvalState]): Evaluation information for each uid.
+            competition (Competition): The current competition being evaluated.
+
+        Returns:
+            tuple: A tuple containing two dictionaries, one for wins and one for win rates.
+        """
+        uid_to_average_loss = {
+            uid: state.avg_loss() for uid, state in uid_to_state.items()
+        }
+        uid_to_block = {uid: state.block for uid, state in uid_to_state.items()}
+
+        # Filter to the list of uids that may at one point be a top model.
+        competitive_uids = pt.validation.compute_competitive_uids(
+            uid_to_average_loss, uid_to_block, competition.constraints.epsilon_func
+        )
+
+        # Log which models got dropped for the second pass.
+        dropped_uids = [uid for uid in uids if uid not in competitive_uids]
+        if dropped_uids:
+            bt.logging.info(
+                f"The following uids were not included in the win rate calculation because they did not beat the fully decayed loss of any previously submitted model in this eval batch: {dropped_uids}."
+            )
+
+        # Calculate new wins and win_rate with only the competitive uids considered.
+        wins, win_rate = pt.validation.compute_wins(
+            competitive_uids,
+            uid_to_average_loss,
+            uid_to_block,
+            competition.constraints.epsilon_func,
+            cur_block,
+        )
+
+        top_uid = max(win_rate, key=win_rate.get)
+        self._record_eval_results(top_uid, cur_block, uid_to_state, competition.id)
+
+        # Compute softmaxed weights based on win rate.
+        model_weights = torch.tensor(
+            [win_rate.get(uid, 0) for uid in uids], dtype=torch.float32
+        )
+        step_weights = torch.softmax(model_weights / constants.temperature, dim=0)
+
+        # Fill in metagraph sized tensor with the step weights of the evaluated models.
+        with self.metagraph_lock:
+            competition_weights = torch.zeros_like(self.metagraph.S)
+
+        for i, uid_i in enumerate(uids):
+            competition_weights[uid_i] = step_weights[i]
+
+        # Record weights for the current competition.
+        self.competition_tracker.record_competition_weights(
+            competition.id, competition_weights
+        )
+
+        return wins, win_rate
 
     def _update_uids_to_eval(
         self,
@@ -1066,6 +1265,7 @@ class Validator:
         top_uid: int,
         curr_block: int,
         uid_to_state: typing.Dict[int, PerUIDEvalState],
+        competition_id: CompetitionId,
     ) -> None:
         """Records the results of the evaluation step to the model tracker.
 
@@ -1078,6 +1278,7 @@ class Validator:
         for _, state in uid_to_state.items():
             self.model_tracker.on_model_evaluated(
                 state.hotkey,
+                competition_id,
                 EvalResult(
                     block=curr_block,
                     score=state.avg_loss(),
@@ -1095,7 +1296,6 @@ class Validator:
         uid_to_state: typing.Dict[int, PerUIDEvalState],
         uid_to_competition_id: typing.Dict[int, typing.Optional[int]],
         pages: typing.List[str],
-        model_weights: typing.List[float],
         wins: typing.Dict[int, int],
         win_rate: typing.Dict[int, float],
         load_model_perf: PerfMonitor,
@@ -1112,12 +1312,12 @@ class Validator:
         }
 
         # The sub-competition weights
-        sub_competition_weights = torch.softmax(
-            model_weights / constants.temperature, dim=0
+        sub_competition_weights = self.competition_tracker.get_competition_weights(
+            competition_id
         )
 
         # All uids in the competition step log are from the same competition.
-        for idx, uid in enumerate(uids):
+        for uid in uids:
             step_log["uid_data"][str(uid)] = {
                 "uid": uid,
                 "block": uid_to_state[uid].block,
@@ -1131,8 +1331,14 @@ class Validator:
                 "win_rate": win_rate[uid] if uid in win_rate else 0,
                 "win_total": wins[uid] if uid in wins else 0,
                 "weight": self.weights[uid].item(),
-                "norm_weight": sub_competition_weights[idx].item(),
+                "norm_weight": sub_competition_weights[uid].item(),
             }
+            for dataset_name, avg_loss in (
+                uid_to_state[uid].avg_loss_per_dataset().items()
+            ):
+                step_log["uid_data"][str(uid)][
+                    f"{dataset_name}_average_loss"
+                ] = avg_loss
         table = Table(title="Step", expand=True)
         table.add_column("uid", justify="right", style="cyan", no_wrap=True)
         table.add_column("hf", style="magenta", overflow="fold")
@@ -1144,7 +1350,7 @@ class Validator:
         table.add_column("comp_weight", style="magenta", overflow="fold")
         table.add_column("block", style="magenta", overflow="fold")
         table.add_column("comp", style="magenta", overflow="fold")
-        for idx, uid in enumerate(uids):
+        for uid in uids:
             try:
                 table.add_row(
                     str(uid),
@@ -1154,7 +1360,7 @@ class Validator:
                     str(round(step_log["uid_data"][str(uid)]["win_rate"], 4)),
                     str(step_log["uid_data"][str(uid)]["win_total"]),
                     str(round(self.weights[uid].item(), 4)),
-                    str(round(sub_competition_weights[idx].item(), 4)),
+                    str(round(sub_competition_weights[uid].item(), 4)),
                     str(step_log["uid_data"][str(uid)]["block"]),
                     str(step_log["uid_data"][str(uid)]["competition_id"]),
                 )
@@ -1216,8 +1422,7 @@ class Validator:
                 },
                 "weight_data": {str(uid): self.weights[uid].item() for uid in uids},
                 "competition_weight_data": {
-                    str(uid): sub_competition_weights[i].item()
-                    for i, uid in enumerate(uids)
+                    str(uid): sub_competition_weights[uid].item() for uid in uids
                 },
                 "competition_id": {str(uid): int(competition_id)},
                 "load_model_perf": {
@@ -1235,11 +1440,11 @@ class Validator:
             }
             bt.logging.trace("Logging to Wandb")
             self.wandb_run.log(
-                {**graphed_data, "original_format_json": original_format_json},
-                step=self.last_wandb_step,
+                {**graphed_data, "original_format_json": original_format_json}
             )
 
-            self.last_wandb_step += 1
+            # Increment the number of completed run steps by 1
+            self.run_step_count += 1
 
     def _get_uids_to_competition_ids(
         self,
@@ -1265,7 +1470,7 @@ class Validator:
         while True:
             try:
                 # First run a step.
-                await self.try_run_step(ttl=60 * 60)
+                await self.try_run_step(ttl=120 * 60)
                 self.global_step += 1
 
                 block = self._get_current_block()

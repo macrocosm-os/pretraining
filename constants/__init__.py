@@ -64,6 +64,10 @@ BLOCK_3B_7BSTAR_UNPACK = 3_601_190
 # Starting block for activating sample unpacking
 BLOCK_SAMPLE_PACK = 4_001_017
 
+# Starting block for 14B* (multi dataset experiment).
+# TODO: Update starting block as needed.
+BLOCK_14B_STAR = 4_210_361
+
 # Minimum percent of weight on a vali for a miner to be considered a top miner.
 # Since there can be multiple competitions at different reward percentages we can't just check biggest.
 WEIGHT_SYNC_MINER_MIN_PERCENT = 0.05
@@ -97,6 +101,8 @@ DATASET_BY_COMPETITION_ID: Dict[CompetitionId, str] = {
     CompetitionId.B3_MODEL: pt.dataset.SubsetFalconLoader,
     CompetitionId.B7_MODEL: pt.dataset.SubsetFineWebEdu2Loader,
     CompetitionId.B14_MODEL: pt.dataset.SubsetFineWebEdu2Loader,
+    # B14 model multi dataset adds the following dataset to the baseline b14 competition.
+    CompetitionId.B14_MODEL_MULTI_DATASET: pt.dataset.SubsetFalconLoader,
 }
 
 # Synchronize on blocks roughly every 30 minutes.
@@ -165,6 +171,33 @@ COMPETITION_SCHEDULE_BY_BLOCK: List[Tuple[int, List[Competition]]] = [
                 CompetitionId.B14_MODEL,
                 MODEL_CONSTRAINTS_BY_COMPETITION_ID[CompetitionId.B14_MODEL],
                 0.57,
+            ),
+        ],
+    ),
+    (
+        BLOCK_14B_STAR,
+        [
+            # TODO confirm if we are removing the other 2 competitions.
+            Competition(
+                CompetitionId.M772_MODEL,
+                MODEL_CONSTRAINTS_BY_COMPETITION_ID[CompetitionId.M772_MODEL],
+                0.14,
+            ),
+            Competition(
+                CompetitionId.B3_MODEL,
+                MODEL_CONSTRAINTS_BY_COMPETITION_ID[CompetitionId.B3_MODEL],
+                0.29,
+            ),
+            Competition(
+                CompetitionId.B14_MODEL,
+                MODEL_CONSTRAINTS_BY_COMPETITION_ID[CompetitionId.B14_MODEL],
+                0.52,
+            ),
+            # TODO decide specific weight.
+            Competition(
+                CompetitionId.B14_MODEL_MULTI_DATASET,
+                MODEL_CONSTRAINTS_BY_COMPETITION_ID[CompetitionId.B14_MODEL],
+                0.05,
             ),
         ],
     ),
