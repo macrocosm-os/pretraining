@@ -919,7 +919,7 @@ class Validator:
             dataloader_14b_star = SubsetDataLoader_14b_star(
                 batch_size=constants.batch_size,
                 sequence_length=competition_14b_star.constraints.sequence_length,
-                num_pages=pages_per_eval,
+                num_pages=int(pages_per_eval * constants.PAGE_RATIO_14B_STAR),
                 tokenizer=tokenizer,
                 pack_samples=pack_samples,
                 random_seed=seed,

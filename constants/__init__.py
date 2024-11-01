@@ -105,6 +105,15 @@ DATASET_BY_COMPETITION_ID: Dict[CompetitionId, str] = {
     CompetitionId.B14_MODEL_MULTI_DATASET: pt.dataset.SubsetFalconLoader,
 }
 
+# In a future release we will update the loaders to be able to load a certain number of tokens rather than pages.
+# Until then we can use this ratio to approximate the correct ratio for B14*. Token counts using Xenova/gpt-4.
+ESTIMATED_TOKENS_PER_PAGE_FALCON = 55419
+ESTIMATED_TOKENS_PER_PAGE_FINEWEB = 87490
+# To make the additional data be 1/4 of the total we need a 1:3 ratio.
+PAGE_RATIO_14B_STAR = (
+    0.33 * ESTIMATED_TOKENS_PER_PAGE_FINEWEB / ESTIMATED_TOKENS_PER_PAGE_FALCON
+)
+
 # Synchronize on blocks roughly every 30 minutes.
 SYNC_BLOCK_CADENCE = 150
 # Delay at least as long as the sync block cadence with an additional buffer.
