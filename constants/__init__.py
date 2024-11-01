@@ -65,8 +65,7 @@ BLOCK_3B_7BSTAR_UNPACK = 3_601_190
 BLOCK_SAMPLE_PACK = 4_001_017
 
 # Starting block for 14B* (multi dataset experiment).
-# TODO: Update starting block as needed.
-BLOCK_14B_STAR = 4_210_361
+BLOCK_14B_STAR = 4_252_646
 
 # Minimum percent of weight on a vali for a miner to be considered a top miner.
 # Since there can be multiple competitions at different reward percentages we can't just check biggest.
@@ -186,12 +185,6 @@ COMPETITION_SCHEDULE_BY_BLOCK: List[Tuple[int, List[Competition]]] = [
     (
         BLOCK_14B_STAR,
         [
-            # TODO confirm if we are removing the other 2 competitions.
-            Competition(
-                CompetitionId.M772_MODEL,
-                MODEL_CONSTRAINTS_BY_COMPETITION_ID[CompetitionId.M772_MODEL],
-                0.14,
-            ),
             Competition(
                 CompetitionId.B3_MODEL,
                 MODEL_CONSTRAINTS_BY_COMPETITION_ID[CompetitionId.B3_MODEL],
@@ -200,7 +193,7 @@ COMPETITION_SCHEDULE_BY_BLOCK: List[Tuple[int, List[Competition]]] = [
             Competition(
                 CompetitionId.B14_MODEL,
                 MODEL_CONSTRAINTS_BY_COMPETITION_ID[CompetitionId.B14_MODEL],
-                0.52,
+                0.66,
             ),
             # TODO decide specific weight.
             Competition(
