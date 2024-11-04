@@ -26,6 +26,10 @@ from transformers import AutoTokenizer
 from datasets import load_dataset
 from pprint import pprint
 
+import os
+from dotenv import load_dotenv  
+load_dotenv()
+
 
 class SubsetLoader(IterableDataset):
     """
@@ -145,6 +149,98 @@ class SubsetLoader(IterableDataset):
                 return np.stack(batch)
 
         raise StopIteration
+
+class SubsetStackV1DedupLoader(SubsetLoader):
+    max_pages: int = 236655813
+    name: str = "bigcode/the-stack-dedup"
+    base_url: str = "https://datasets-server.huggingface.co/rows"
+
+    def __init__(
+            self,
+            batch_size,
+            sequence_length,
+            num_pages=None,
+            tokenizer: AutoTokenizer=None,
+            pack_samples: bool=False,
+    ):
+        super().__init__(batch_size,
+                         sequence_length,
+                         num_pages,
+                         tokenizer,
+                         pack_samples)
+
+        self.params = {
+            "dataset": self.name,
+            "config": "default",
+            "split": "train",
+        }
+
+        self.retry_limit = 10  # Number of retries
+        self.retry_delay = 5  # Seconds to wait between retries
+
+        # Get HF token from environment
+        self.hf_token = os.getenv("HF_TOKEN")
+        if not self.hf_token:
+            raise ValueError("HF_TOKEN environment variable not found")
+
+        # Fetch pages only if the number of pages is specified
+        if self.num_pages:
+            pages = self._sample_pages()
+            self.fetch_data_for_pages(pages)
+
+    def _fetch_data_for_page(self, page):
+        self.params["offset"] = page
+        self.params["limit"] = self.num_rows_per_page
+        attempt = 0
+        while attempt < self.retry_limit:
+            try:
+                # Add authorization header
+                headers = {"Authorization": f"Bearer {self.hf_token}"}
+                response = requests.get(self.base_url, params=self.params, headers=headers)
+                response.raise_for_status()  # This will raise an HTTPError if the HTTP request returned an unsuccessful status code
+                for row in response.json()["rows"]:
+                    content = row["row"]["content"]
+                    input_ids = self.tokenizer(content, truncation=True)["input_ids"]
+                    self.buffer += input_ids
+                    self.buffer += [self.tokenizer.eos_token_id]
+
+                break  # If the request was successful, break out of the retry loop
+            except requests.exceptions.RequestException as e:
+                attempt += 1
+                bt.logging.warning(
+                    f"Failed to fetch data for page {page}, retrying. Attempt {attempt}/{self.retry_limit}"
+                )
+                if attempt < self.retry_limit:
+                    time.sleep(self.retry_delay)  # Wait before the next retry
+                else:
+                    bt.logging.error(
+                        "Maximum retry limit reached. Unable to fetch data."
+                    )
+                    raise
+
+    def _sample_pages(self):
+        """
+        Randomly sample pages to be used in validation
+        """
+        pages = [
+            random.randint(1, self.max_pages)
+            for _ in range(self.num_pages)
+        ]
+
+        return pages
+
+
+    def get_page_names(self):
+        """
+        This is a utility function that returns the page names that were used.
+        Each page as a single string instead of a tuple
+        """
+        page_names = []
+
+        if hasattr(self, 'pages'):
+            page_names = self.pages
+
+        return page_names
 
 
 class SubsetFineWebEdu2Loader(SubsetLoader):
