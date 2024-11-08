@@ -17,7 +17,7 @@ class SubsetLoader(IterableDataset):
     """Base class for data-specific subset loader classes."""
     
     name: str = None  # Dataset name
-    base_url: str = "https://datasets-server.huggingface.co/rows"
+    rows_base_url: str = "https://datasets-server.huggingface.co/rows"
     size_base_url: str = "https://datasets-server.huggingface.co/size"
     max_pages: int = None
     
@@ -122,7 +122,7 @@ class SubsetLoader(IterableDataset):
         while attempt < self.retry_limit:
             try:
                 response = requests.get(
-                    self.base_url, 
+                    self.rows_base_url, 
                     params=self.params,
                     headers=self._get_request_headers()
                 )
@@ -296,7 +296,7 @@ class SubsetFineWebEdu2Loader(SubsetLoader):
             }
 
             try:
-                response = requests.get(self.base_url, params=params)
+                response = requests.get(self.rows_base_url, params=params)
                 response.raise_for_status()
                 self.pages.append(page)
 
@@ -328,3 +328,53 @@ class SubsetFineWebEdu2Loader(SubsetLoader):
             split = self.configs_data[config_name]["split"]
             pages.append((config_name, selected_page_start, split))
         return pages
+    
+    def fetch_data_to_rows(self, num_pages):
+        """Fetch data and return raw text rows instead of adding to buffer."""
+        downloaded_pages = set()
+        rows = []
+        attempts = 0
+        duplicates = 0
+        initial_offset = random.randint(0, self.num_rows_per_page - 1)
+
+        while len(downloaded_pages) < num_pages:
+            page = self.get_random_pages(num_pages=1, initial_offset=initial_offset)[0]
+
+            if page in downloaded_pages:
+                duplicates += 1
+                if duplicates >= self.duplicate_page_threshold:
+                    bt.logging.debug(
+                        f"Hit duplicate page threshold of {self.duplicate_page_threshold}. "
+                        f"Stopping early at: {len(downloaded_pages)} pages."
+                    )
+                    break
+                continue
+
+            config_name, page_row_start, split = page
+            params = {
+                "dataset": self.name,
+                "config": config_name,
+                "split": split,
+                "offset": page_row_start,
+                "limit": self.num_rows_per_page,
+            }
+
+            try:
+                response = requests.get(self.rows_base_url, params=params)
+                response.raise_for_status()
+                downloaded_pages.add(page)
+
+                for row in response.json()["rows"]:
+                    rows.append(row["row"]["text"])
+
+            except requests.exceptions.RequestException as e:
+                attempts += 1
+                bt.logging.warning(
+                    f"Failed to fetch data, retrying with a newly sampled page. "
+                    f"Attempt {attempts}/{self.retry_limit * num_pages}"
+                )
+                if attempts >= num_pages * self.retry_limit:
+                    bt.logging.error("Maximum retry limit reached. Unable to fetch data.")
+                    raise
+
+        return rows
