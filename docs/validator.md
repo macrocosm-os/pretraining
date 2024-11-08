@@ -105,10 +105,11 @@ The dataset for code, `The Stack V1-dedup`, requires a **Hugging Face access tok
 
 1. Go to the [Hugging Face website](https://huggingface.co/).
 2. If you don’t already have an account, create one. Otherwise, log in.
-3. Once logged in, click on your profile icon in the top-right corner, and select **Settings**.
-4. In the settings menu, locate and click on **Access Tokens**.
-5. Under the Access Tokens section, click **New token** and generate a token with write permissions.
-6. Copy the generated token.
+3. Go to the [dataset's website](https://huggingface.co/datasets/bigcode/the-stack) and agree to their terms of use. You should immediately gain access to their dataset.
+4. Click on your profile icon in the top-right corner, and select **Settings**.
+5. In the settings menu, locate and click on **Access Tokens**.
+6. Under the Access Tokens section, click **New token** and generate a token with write permissions.
+7. Copy the generated token.
 
 ### Step 2: Create a `.env` File in the `pretraining` Directory
 
