@@ -105,7 +105,7 @@ The dataset for code, `The Stack V1-dedup`, requires a **Hugging Face access tok
 
 1. Go to the [Hugging Face website](https://huggingface.co/).
 2. If you don’t already have an account, create one. Otherwise, log in.
-3. Go to the [dataset's website](https://huggingface.co/datasets/bigcode/the-stack) and agree to their terms of use. You should immediately gain access to their dataset.
+3. Go to the [dataset's website](https://huggingface.co/datasets/bigcode/the-stack-dedup) and agree to their terms of use. You should immediately gain access to their dataset.
 4. Click on your profile icon in the top-right corner, and select **Settings**.
 5. In the settings menu, locate and click on **Access Tokens**.
 6. Under the Access Tokens section, click **New token** and generate a token with write permissions.
