@@ -709,7 +709,9 @@ class Validator:
                 uids = self.metagraph.uids
             try:
                 self.weights.nan_to_num(0.0)
-                success, message = self.subtensor.set_weights(
+                # Create a new subtensor each time we set weights to improve success rate.
+                weight_subtensor = bt.subtensor(config=self.config)
+                success, message = weight_subtensor.set_weights(
                     netuid=self.config.netuid,
                     wallet=self.wallet,
                     uids=uids,
