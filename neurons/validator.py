@@ -709,7 +709,7 @@ class Validator:
                 uids = self.metagraph.uids
             try:
                 self.weights.nan_to_num(0.0)
-                self.subtensor.set_weights(
+                success, message = self.subtensor.set_weights(
                     netuid=self.config.netuid,
                     wallet=self.wallet,
                     uids=uids,
@@ -717,8 +717,13 @@ class Validator:
                     wait_for_inclusion=False,
                     version_key=constants.weights_version_key,
                 )
-                # We only update the last epoch when we successfully set weights.
-                self.last_epoch = block
+                if not success:
+                    bt.logging.warning(
+                        f"Failed to set weights (will retry later): {message}"
+                    )
+                else:
+                    # We only update the last epoch when we successfully set weights.
+                    self.last_epoch = block
             except:
                 bt.logging.warning("Failed to set weights. Trying again later.")
 
