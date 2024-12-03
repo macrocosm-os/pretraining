@@ -37,7 +37,7 @@ from typing import Dict, List, Tuple
 __version__ = "4.6.2"
 
 # Validator schema version
-__validator_version__ = "4.6.0"
+__validator_version__ = "4.6.2"
 version_split = __validator_version__.split(".")
 __spec_version__ = (
     (1000 * int(version_split[0]))
