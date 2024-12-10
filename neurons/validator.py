@@ -27,6 +27,7 @@ import dataclasses
 import datetime as dt
 import functools
 import json
+import logging
 import math
 import os
 import pickle
@@ -35,8 +36,11 @@ import time
 import traceback
 import typing
 from collections import defaultdict
+from retry import retry
 
 import bittensor as bt
+from bittensor.utils.btlogging.helpers import all_loggers
+from bittensor.utils.btlogging.defines import BITTENSOR_LOGGER_NAME
 import torch
 import wandb
 
@@ -126,7 +130,15 @@ class Validator:
 
     def __init__(self):
         self.config = config.validator_config()
+        # Manually default to info before overriding with arguments.
+        # If this is not done then info logging does not work in the cases where other modes are not specified.
+        bt.logging.set_info()
         bt.logging(config=self.config)
+
+        # Setting logging level on bittensor messes with all loggers, which we don't want, so set explicitly to warning here.
+        for logger in all_loggers():
+            if not logger.name.startswith(BITTENSOR_LOGGER_NAME):
+                logger.setLevel(logging.WARNING)
 
         bt.logging.info(f"Starting validator with config: {self.config}")
 
@@ -172,7 +184,7 @@ class Validator:
             self._new_wandb_run()
 
         # === Running args ===
-        self.weights = torch.zeros_like(torch.tensor(self.metagraph.S))
+        self.weights = torch.zeros_like(torch.from_numpy(self.metagraph.S))
         self.global_step = 0
         self.last_epoch = self.metagraph.block.item()
 
@@ -379,6 +391,9 @@ class Validator:
         uid_last_checked_sequential = dict()
         # Track how recently we checked the list of top models.
         last_checked_top_models_time = None
+
+        # Delay the first update loop until the metagraph has been synced.
+        time.sleep(60)
 
         # The below loop iterates across all miner uids and checks to see
         # if they should be updated.
@@ -713,7 +728,7 @@ class Validator:
                     netuid=self.config.netuid,
                     wallet=self.wallet,
                     uids=uids,
-                    weights=self.weights,
+                    weights=self.weights.numpy(),
                     wait_for_inclusion=False,
                     version_key=constants.weights_version_key,
                 )
@@ -721,15 +736,6 @@ class Validator:
                 self.last_epoch = block
             except:
                 bt.logging.warning("Failed to set weights. Trying again later.")
-
-            ws, ui = self.weights.topk(len(self.weights))
-            table = Table(title="All Weights")
-            table.add_column("uid", justify="right", style="cyan", no_wrap=True)
-            table.add_column("weight", style="magenta")
-            for index, weight in list(zip(ui.tolist(), ws.tolist())):
-                table.add_row(str(index), str(round(weight, 4)))
-            console = Console()
-            console.print(table)
 
         try:
             bt.logging.debug(f"Setting weights.")
@@ -740,8 +746,12 @@ class Validator:
 
     def _get_current_block(self) -> int:
         """Returns the current block."""
-        try:
+        @retry(tries=5, delay=1, backoff=2)
+        def _get_block_with_retry():
             return self.subtensor.block
+
+        try:
+            return _get_block_with_retry()
         except:
             bt.logging.debug(
                 "Failed to get the latest block from the chain. Using the block from the cached metagraph."
@@ -853,8 +863,6 @@ class Validator:
         uid_to_state = defaultdict(PerUIDEvalState)
 
         bt.logging.trace(f"Current block: {cur_block}")
-
-
 
         if cur_block < constants.BLOCK_STACK_V2_DEDUP:
             dataset_by_competition_id = constants.DATASET_BY_COMPETITION_ID
@@ -1232,7 +1240,7 @@ class Validator:
 
         # Fill in metagraph sized tensor with the step weights of the evaluated models.
         with self.metagraph_lock:
-            competition_weights = torch.zeros_like(self.metagraph.S)
+            competition_weights = torch.zeros_like(torch.from_numpy(self.metagraph.S))
 
         for i, uid_i in enumerate(uids):
             competition_weights[uid_i] = step_weights[i]

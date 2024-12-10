@@ -34,7 +34,7 @@ from typing import Dict, List, Tuple
 # ---------------------------------
 
 # Release
-__version__ = "4.6.2"
+__version__ = "4.6.3"
 
 # Validator schema version
 __validator_version__ = "4.6.0"
@@ -173,7 +173,6 @@ MODEL_CONSTRAINTS_BY_COMPETITION_ID_2: Dict[CompetitionId, ModelConstraints] = {
         epsilon_func=LinearDecay(0.005, 0.0002, 36000),
         max_bytes=29 * 1024 * 1024 * 1024,
     ),
-
 }
 
 # Schedule of competitions by block.
@@ -217,7 +216,6 @@ COMPETITION_SCHEDULE_BY_BLOCK: List[Tuple[int, List[Competition]]] = [
                 0.4,
             ),
         ],
-
     ),
 ]
 
