@@ -186,7 +186,6 @@ class Validator:
         # === Running args ===
         self.weights = torch.zeros_like(torch.from_numpy(self.metagraph.S))
         self.global_step = 0
-        self.last_epoch = self.metagraph.block.item()
 
         self.uids_to_eval: typing.Dict[CompetitionId, typing.Set] = defaultdict(set)
 
@@ -319,6 +318,10 @@ class Validator:
         # == Initialize the cleaner thread to remove outdated models ==
         self.clean_thread = threading.Thread(target=self.clean_models, daemon=True)
         self.clean_thread.start()
+
+        # == Initialize the weight setting thread ==
+        self.weight_thread = threading.Thread(target=self.set_weights, daemon=True)
+        self.weight_thread.start()
 
     def __del__(self):
         if hasattr(self, "stop_event"):
@@ -716,7 +719,44 @@ class Validator:
 
         bt.logging.info("Exiting clean models loop.")
 
-    async def try_set_weights(self, block: int, ttl: int):
+    def set_weights(self):
+        """Set weights on the chain based."""
+
+        # Check that we have some weights internally for startup situations.
+        while torch.all(self.weights == 0):
+            bt.logging.trace(
+                "Waiting 60 seconds for internal weights before continuing to try set weights."
+            )
+            time.sleep(60)
+
+        while not self.stop_event.is_set():
+            try:
+                # Check when we last updated
+                with self.metagraph_lock:
+                    last_update_block = self.metagraph.last_update[self.uid]
+
+                current_block = self._get_current_block()
+                block_diff = current_block - last_update_block
+                if block_diff > 100:
+                    # If it has been more than 100 blocks try to set.
+                    asyncio.run(self.try_set_weights(ttl=60))
+                else:
+                    # Sleep until it will have been 101 blocks passed.
+                    blocks_to_wait = 101 - block_diff
+                    seconds_to_wait = blocks_to_wait * 12
+                    bt.logging.trace(
+                        f"Weights have been set in the last 100 blocks. Waiting {seconds_to_wait} seconds."
+                    )
+                    time.sleep(seconds_to_wait)
+            except Exception as e:
+                bt.logging.error(f"Error in set weights: {e}")
+
+            # Only try at most once every minute.
+            time.sleep(60)
+
+        bt.logging.info("Exiting set weights loop.")
+
+    async def try_set_weights(self, ttl: int):
         """Sets the weights on the chain with ttl, without raising exceptions if it times out."""
 
         async def _try_set_weights():
@@ -732,8 +772,6 @@ class Validator:
                     wait_for_inclusion=False,
                     version_key=constants.weights_version_key,
                 )
-                # We only update the last epoch when we successfully set weights.
-                self.last_epoch = block
             except:
                 bt.logging.warning("Failed to set weights. Trying again later.")
 
@@ -746,6 +784,7 @@ class Validator:
 
     def _get_current_block(self) -> int:
         """Returns the current block."""
+
         @retry(tries=5, delay=1, backoff=2)
         def _get_block_with_retry():
             return self.subtensor.block
@@ -1004,6 +1043,7 @@ class Validator:
                         )
 
                     with compute_loss_perf.sample():
+                        bt.logging.info("about to run in subprocess")
                         # Run each computation in a subprocess so that the GPU is reset between each model.
                         losses = utils.run_in_subprocess(
                             functools.partial(
@@ -1017,6 +1057,7 @@ class Validator:
                             ttl=430,
                             mode="spawn",
                         )
+                        bt.logging.info("finished run in subprocess")
                     if running_14b_star:
                         with compute_loss_perf_14b_star.sample():
                             try:
@@ -1496,19 +1537,6 @@ class Validator:
                 # First run a step.
                 await self.try_run_step(ttl=120 * 60)
                 self.global_step += 1
-
-                block = self._get_current_block()
-
-                # Then check if we should set weights and do so if needed.
-                if not self.config.dont_set_weights and not self.config.offline:
-                    blocks_until_epoch = block - self.last_epoch
-
-                    if blocks_until_epoch >= self.config.blocks_per_epoch:
-                        await self.try_set_weights(block=block, ttl=60)
-                    else:
-                        bt.logging.debug(
-                            f"{blocks_until_epoch} / {self.config.blocks_per_epoch} blocks until next epoch."
-                        )
             except KeyboardInterrupt:
                 bt.logging.info(
                     "KeyboardInterrupt caught, gracefully closing the wandb run..."
