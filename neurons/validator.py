@@ -1058,7 +1058,6 @@ class Validator:
                         )
 
                     with compute_loss_perf.sample():
-                        bt.logging.info("about to run in subprocess")
                         # Run each computation in a subprocess so that the GPU is reset between each model.
                         losses = utils.run_in_subprocess(
                             functools.partial(
@@ -1072,7 +1071,6 @@ class Validator:
                             ttl=430,
                             mode="spawn",
                         )
-                        bt.logging.info("finished run in subprocess")
                     if running_14b_star:
                         with compute_loss_perf_14b_star.sample():
                             try:
