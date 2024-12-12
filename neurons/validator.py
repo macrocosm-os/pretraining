@@ -756,7 +756,9 @@ class Validator:
                 while not set_weights_success:
                     set_weights_success, _ = asyncio.run(self.try_set_weights(ttl=60))
                     # Wait for 60 seconds before we try to set weights again.
-                    if not set_weights_success:
+                    if set_weights_success:
+                        bt.logging.info("Successfully set weights.")
+                    else:
                         time.sleep(60)
             except Exception as e:
                 bt.logging.error(f"Error in set weights: {e}")
@@ -786,8 +788,11 @@ class Validator:
                     version_key=constants.weights_version_key,
                     max_retries=1,
                 )
-            except:
-                bt.logging.warning("Failed to set weights. Trying again later.")
+            except Exception as e:
+                bt.logging.warning(
+                    f"Failed to set weights due to {e}. Trying again later."
+                )
+                return (False, str(e))
 
         try:
             bt.logging.debug(f"Setting weights.")
@@ -796,6 +801,7 @@ class Validator:
             return status
         except asyncio.TimeoutError:
             bt.logging.error(f"Failed to set weights after {ttl} seconds")
+            return (False, f"Timeout after {ttl} seconds")
 
     def _get_current_block(self) -> int:
         """Returns the current block."""
