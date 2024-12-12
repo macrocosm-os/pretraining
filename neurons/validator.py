@@ -751,36 +751,25 @@ class Validator:
             time.sleep(60)
 
         while not self.stop_event.is_set():
-            try:
-                # Check when we last updated
-                with self.metagraph_lock:
-                    last_update_block = self.metagraph.last_update[self.uid]
+            set_weights_success = False
+            while not set_weights_success:
+                try:
+                    set_weights_success, _ = asyncio.run(self.try_set_weights(ttl=60))
+                    # Wait for 60 seconds before we try to set weights again.
+                    if not set_weights_success:
+                        time.sleep(60)
+                except Exception as e:
+                    bt.logging.error(f"Error in set weights: {e}")
 
-                current_block = self._get_current_block()
-                block_diff = current_block - last_update_block
-                if block_diff > 100:
-                    # If it has been more than 100 blocks try to set.
-                    asyncio.run(self.try_set_weights(ttl=60))
-                else:
-                    # Sleep until it will have been 101 blocks passed.
-                    blocks_to_wait = 101 - block_diff
-                    seconds_to_wait = blocks_to_wait * 12
-                    bt.logging.trace(
-                        f"Weights have been set in the last 100 blocks. Waiting {seconds_to_wait} seconds."
-                    )
-                    time.sleep(seconds_to_wait)
-            except Exception as e:
-                bt.logging.error(f"Error in set weights: {e}")
-
-            # Only try at most once every minute.
-            time.sleep(60)
+            # Only try at most once every 20 minutes
+            time.sleep(60 * 20)
 
         bt.logging.info("Exiting set weights loop.")
 
-    async def try_set_weights(self, ttl: int):
+    async def try_set_weights(self, ttl: int) -> typing.Tuple[bool, str]:
         """Sets the weights on the chain with ttl, without raising exceptions if it times out."""
 
-        async def _try_set_weights():
+        async def _try_set_weights() -> typing.Tuple[bool, str]:
             with self.metagraph_lock:
                 uids = self.metagraph.uids
             try:
@@ -788,7 +777,7 @@ class Validator:
                     self.weights.nan_to_num(0.0)
                     weights_to_set = self.weights
 
-                self.subtensor.set_weights(
+                return self.subtensor.set_weights(
                     netuid=self.config.netuid,
                     wallet=self.wallet,
                     uids=uids,
@@ -802,8 +791,9 @@ class Validator:
 
         try:
             bt.logging.debug(f"Setting weights.")
-            await asyncio.wait_for(_try_set_weights(), ttl)
-            bt.logging.debug(f"Finished setting weights.")
+            status = await asyncio.wait_for(_try_set_weights(), ttl)
+            bt.logging.debug(f"Finished setting weights with status: {status}.")
+            return status
         except asyncio.TimeoutError:
             bt.logging.error(f"Failed to set weights after {ttl} seconds")
 
