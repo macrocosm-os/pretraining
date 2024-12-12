@@ -771,6 +771,7 @@ class Validator:
                     weights=self.weights.numpy(),
                     wait_for_inclusion=False,
                     version_key=constants.weights_version_key,
+                    max_retries=1,
                 )
             except:
                 bt.logging.warning("Failed to set weights. Trying again later.")
