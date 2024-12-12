@@ -184,6 +184,7 @@ class Validator:
             self._new_wandb_run()
 
         # === Running args ===
+        self.weight_lock = threading.RLock()
         self.weights = torch.zeros_like(torch.from_numpy(self.metagraph.S))
         self.global_step = 0
 
@@ -261,6 +262,22 @@ class Validator:
                 bt.logging.warning(
                     f"Failed to load competition tracker state. Reason: {e}. Starting from scratch."
                 )
+
+        # Also update our internal weights based on the tracker.
+        cur_block = self._get_current_block()
+
+        # Get the competition schedule for the current block.
+        # This is a list of competitions
+        competition_schedule: typing.List[Competition] = (
+            competition_utils.get_competition_schedule_for_block(
+                block=cur_block,
+                schedule_by_block=constants.COMPETITION_SCHEDULE_BY_BLOCK,
+            )
+        )
+        with self.weight_lock:
+            self.weights = self.competition_tracker.get_subnet_weights(
+                competition_schedule
+            )
 
         # Initialize the UIDs to eval.
         if not os.path.exists(self.uids_filepath):
@@ -723,7 +740,11 @@ class Validator:
         """Set weights on the chain based."""
 
         # Check that we have some weights internally for startup situations.
-        while torch.all(self.weights == 0):
+        all_zero_weights = True
+        while all_zero_weights is True:
+            # Technically returns a tensor but it evaluates to true.
+            with self.weight_lock:
+                all_zero_weights = torch.all(self.weights == 0)
             bt.logging.trace(
                 "Waiting 60 seconds for internal weights before continuing to try set weights."
             )
@@ -763,12 +784,15 @@ class Validator:
             with self.metagraph_lock:
                 uids = self.metagraph.uids
             try:
-                self.weights.nan_to_num(0.0)
+                with self.weight_lock:
+                    self.weights.nan_to_num(0.0)
+                    weights_to_set = self.weights
+
                 self.subtensor.set_weights(
                     netuid=self.config.netuid,
                     wallet=self.wallet,
                     uids=uids,
-                    weights=self.weights.numpy(),
+                    weights=weights_to_set.numpy(),
                     wait_for_inclusion=False,
                     version_key=constants.weights_version_key,
                     max_retries=1,
@@ -1132,7 +1156,10 @@ class Validator:
         # Align competition_tracker to only track active competitions.
         self.competition_tracker.reset_competitions(active_competition_ids)
         # Update self.weights to the merged values across active competitions.
-        self.weights = self.competition_tracker.get_subnet_weights(competition_schedule)
+        with self.weight_lock:
+            self.weights = self.competition_tracker.get_subnet_weights(
+                competition_schedule
+            )
 
         # Prioritize models for keeping up to the sample_min for the next eval loop.
         # If the model has any significant weight, prioritize by weight with greater weights being kept first.
@@ -1379,6 +1406,9 @@ class Validator:
             competition_id
         )
 
+        # Get a copy of weights to print.
+        with self.weight_lock:
+            log_weights = self.weights
         # All uids in the competition step log are from the same competition.
         for uid in uids:
             step_log["uid_data"][str(uid)] = {
@@ -1393,7 +1423,7 @@ class Validator:
                 # We use 0 in the case where a uid was not competitive and therefore not used in win rate calcs.
                 "win_rate": win_rate[uid] if uid in win_rate else 0,
                 "win_total": wins[uid] if uid in wins else 0,
-                "weight": self.weights[uid].item(),
+                "weight": log_weights[uid].item(),
                 "norm_weight": sub_competition_weights[uid].item(),
                 "dataset_perf": {},
             }
@@ -1425,7 +1455,7 @@ class Validator:
                     str(round(step_log["uid_data"][str(uid)]["epsilon_adv"], 4)),
                     str(round(step_log["uid_data"][str(uid)]["win_rate"], 4)),
                     str(step_log["uid_data"][str(uid)]["win_total"]),
-                    str(round(self.weights[uid].item(), 4)),
+                    str(round(log_weights[uid].item(), 4)),
                     str(round(sub_competition_weights[uid].item(), 4)),
                     str(step_log["uid_data"][str(uid)]["block"]),
                     str(step_log["uid_data"][str(uid)]["competition_id"]),
@@ -1435,7 +1465,7 @@ class Validator:
         console = Console()
         console.print(table)
 
-        ws, ui = self.weights.topk(len(self.weights))
+        ws, ui = log_weights.topk(len(log_weights))
         table = Table(title="Weights > 0.001")
         table.add_column("uid", justify="right", style="cyan", no_wrap=True)
         table.add_column("weight", style="magenta")
@@ -1486,7 +1516,7 @@ class Validator:
                 "win_total_data": {
                     str(uid): uid_data[str(uid)]["win_total"] for uid in uids
                 },
-                "weight_data": {str(uid): self.weights[uid].item() for uid in uids},
+                "weight_data": {str(uid): log_weights[uid].item() for uid in uids},
                 "competition_weight_data": {
                     str(uid): sub_competition_weights[uid].item() for uid in uids
                 },
