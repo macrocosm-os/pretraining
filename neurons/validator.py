@@ -751,15 +751,15 @@ class Validator:
             time.sleep(60)
 
         while not self.stop_event.is_set():
-            set_weights_success = False
-            while not set_weights_success:
-                try:
+            try:
+                set_weights_success = False
+                while not set_weights_success:
                     set_weights_success, _ = asyncio.run(self.try_set_weights(ttl=60))
                     # Wait for 60 seconds before we try to set weights again.
                     if not set_weights_success:
                         time.sleep(60)
-                except Exception as e:
-                    bt.logging.error(f"Error in set weights: {e}")
+            except Exception as e:
+                bt.logging.error(f"Error in set weights: {e}")
 
             # Only try at most once every 20 minutes
             time.sleep(60 * 20)
