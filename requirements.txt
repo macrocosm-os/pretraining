@@ -1,5 +1,5 @@
 torch==2.4.1
-bittensor==8.4.3
+bittensor==8.5.1
 huggingface-hub==0.25.2
 matplotlib==3.9.2
 python-dotenv==1.0.1
