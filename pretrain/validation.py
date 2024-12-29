@@ -26,6 +26,7 @@ import bittensor as bt
 import numpy as np
 import torch
 from taoverse.model.competition.epsilon import EpsilonFunc
+from taoverse.utilities import logging
 
 
 def iswin(
@@ -202,7 +203,7 @@ def check_for_reasonable_output(
         most_common_counts.append(counts[max_count_index].item())
 
     if all(count > output_length / 2 for count in most_common_counts):
-        bt.logging.info(
+        logging.info(
             f"Model with config {model.config} had too much repetition in generated outputs."
         )
         return False

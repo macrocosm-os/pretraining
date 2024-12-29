@@ -35,6 +35,7 @@ from taoverse.model.storage.hugging_face.hugging_face_model_store import (
 from taoverse.model.storage.model_metadata_store import ModelMetadataStore
 from taoverse.model.storage.remote_model_store import RemoteModelStore
 from taoverse.model.utils import get_hash_of_two_strings
+from taoverse.utilities import logging
 from transformers import AutoModelForCausalLM, PreTrainedModel
 
 import constants
@@ -72,7 +73,7 @@ async def push(
             chain.
         remote_model_store (Optional[RemoteModelStore]): The remote model store. If None, defaults to writing to HuggingFace
     """
-    bt.logging.info("Pushing model")
+    logging.info("Pushing model")
 
     if metadata_store is None:
         metadata_store = ChainModelMetadataStore(
@@ -92,17 +93,17 @@ async def push(
     namespace, name = model_utils.validate_hf_repo_id(repo)
     model_id = ModelId(namespace=namespace, name=name, competition_id=competition_id)
 
-    bt.logging.debug("Started uploading model to hugging face...")
+    logging.debug("Started uploading model to hugging face...")
     model_id = await remote_model_store.upload_model(
         Model(id=model_id, pt_model=model), model_constraints
     )
 
-    bt.logging.success("Uploaded model to hugging face.")
+    logging.info("Uploaded model to hugging face.")
 
     secure_hash = get_hash_of_two_strings(model_id.hash, wallet.hotkey.ss58_address)
     model_id = replace(model_id, secure_hash=secure_hash)
 
-    bt.logging.success(f"Now committing to the chain with model_id: {model_id}")
+    logging.info(f"Now committing to the chain with model_id: {model_id}")
 
     # We can only commit to the chain every 20 minutes, so run this in a loop, until
     # successful.
@@ -112,7 +113,7 @@ async def push(
                 wallet.hotkey.ss58_address, model_id
             )
 
-            bt.logging.info(
+            logging.info(
                 "Wrote model metadata to the chain. Checking we can read it back..."
             )
 
@@ -124,28 +125,28 @@ async def push(
                 not model_metadata
                 or model_metadata.id.to_compressed_str() != model_id.to_compressed_str()
             ):
-                bt.logging.error(
+                logging.error(
                     f"Failed to read back model metadata from the chain. Expected: {model_id}, got: {model_metadata}"
                 )
                 raise ValueError(
                     f"Failed to read back model metadata from the chain. Expected: {model_id}, got: {model_metadata}"
                 )
 
-            bt.logging.success("Committed model to the chain.")
+            logging.info("Committed model to the chain.")
             break
         except Exception as e:
-            bt.logging.error(f"Failed to advertise model on the chain: {e}")
-            bt.logging.error(f"Retrying in {retry_delay_secs} seconds...")
+            logging.error(f"Failed to advertise model on the chain: {e}")
+            logging.error(f"Retrying in {retry_delay_secs} seconds...")
             time.sleep(retry_delay_secs)
 
     if update_repo_visibility:
-        bt.logging.debug("Making repo public.")
+        logging.debug("Making repo public.")
         huggingface_hub.update_repo_visibility(
             repo,
             private=False,
             token=HuggingFaceModelStore.assert_access_token_exists(),
         )
-        bt.logging.success("Model set to public")
+        logging.info("Model set to public")
 
 
 def save(model: PreTrainedModel, model_dir: str):
@@ -239,7 +240,7 @@ async def load_remote_model(
     if not model_constraints:
         raise ValueError("Invalid competition_id")
 
-    bt.logging.success(f"Fetched model metadata: {model_metadata}")
+    logging.info(f"Fetched model metadata: {model_metadata}")
     model: Model = await remote_model_store.download_model(
         model_metadata.id, download_dir, model_constraints
     )
