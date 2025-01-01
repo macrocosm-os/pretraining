@@ -149,7 +149,7 @@ def get_config():
     )
     parser.add_argument(
         "--netuid",
-        type=str,
+        type=int,
         default=constants.SUBNET_UID,
         help="The subnet UID.",
     )
