@@ -56,10 +56,16 @@ ROOT_DIR = Path(__file__).parent.parent
 # This corresponded to top-10 validator on july 31st, 2024
 WEIGHT_SYNC_VALI_MIN_STAKE = 200_000
 
-
 # Minimum percent of weight on a vali for a miner to be considered a top miner.
 # Since there can be multiple competitions at different reward percentages we can't just check biggest.
 WEIGHT_SYNC_MINER_MIN_PERCENT = 0.05
+
+# Validator eval batch size.
+BATCH_SIZE = 1
+# Validators number of pages to eval over miners on each step.
+PAGES_PER_EVAL = 22
+# Validators number of pages to eval over miners one ach step for stack v2.
+PAGES_PER_EVAL_STACK_V2_DEDUP = 9
 
 # A mapping of block numbers to the supported model types as of that block.
 ALLOWED_MODEL_TYPES_1 = {
@@ -164,6 +170,10 @@ COMPETITION_SCHEDULE_BY_BLOCK: List[Tuple[int, List[Competition]]] = [
                         dataset_id=DatasetId.FALCON,
                         normalization_id=NormalizationId.INVERSE_EXPONENTIAL,
                         normalization_kwargs={"ceiling": 20.0},  # TODO: Adjust
+                        dataset_kwargs={
+                            "batch_size": BATCH_SIZE,
+                            "num_pages": PAGES_PER_EVAL,
+                        },
                         weight=1,
                     ),
                 ],
@@ -179,11 +189,15 @@ COMPETITION_SCHEDULE_BY_BLOCK: List[Tuple[int, List[Competition]]] = [
                         dataset_id=DatasetId.FINEWEB,
                         normalization_id=NormalizationId.INVERSE_EXPONENTIAL,
                         normalization_kwargs={"ceiling": 20.0},  # TODO: Adjust
+                        dataset_kwargs={
+                            "batch_size": BATCH_SIZE,
+                            "num_pages": PAGES_PER_EVAL,
+                        },
                         weight=1,
                     ),
                 ],
             ),
-            # This competition is currently being run as part of B14. The below is just for reference.
+            # This competition is currently being run as part of B14.
             # In a future block this eval task definition will become the new B14 competition eval.
             Competition(
                 CompetitionId.B14_MODEL_MULTI_DATASET,
@@ -196,7 +210,11 @@ COMPETITION_SCHEDULE_BY_BLOCK: List[Tuple[int, List[Competition]]] = [
                         dataset_id=DatasetId.FINEWEB,
                         normalization_id=NormalizationId.INVERSE_EXPONENTIAL,
                         normalization_kwargs={"ceiling": 20.0},  # TODO: Adjust
-                        weight=0.5,
+                        dataset_kwargs={
+                            "batch_size": BATCH_SIZE,
+                            "num_pages": PAGES_PER_EVAL,
+                        },
+                        weight=0.85,
                     ),
                     EvalTask(
                         name="STACKV2",
@@ -204,7 +222,11 @@ COMPETITION_SCHEDULE_BY_BLOCK: List[Tuple[int, List[Competition]]] = [
                         dataset_id=DatasetId.STACK2,
                         normalization_id=NormalizationId.INVERSE_EXPONENTIAL,
                         normalization_kwargs={"ceiling": 20.0},  # TODO: Adjust
-                        weight=0.5,
+                        dataset_kwargs={
+                            "batch_size": BATCH_SIZE,
+                            "num_pages": PAGES_PER_EVAL_STACK_V2_DEDUP,
+                        },
+                        weight=0.15,
                     ),
                 ],
             ),
@@ -238,18 +260,6 @@ alpha = 0.5
 # validator scoring exponential temperature
 # 0.01 gives ~96% to best model with only ~3 receiving any weights.
 temperature = 0.01
-
-# validators number of pages to eval over miners on each step.
-pages_per_eval_unpack = 10  # With sample unpacking
-pages_per_eval_pack = 22
-
-# In a future release we will update the loaders to be able to load a certain number of tokens rather than pages.
-# Until then we need to set this manually
-pages_per_eval_stack_v1_dedup = 1
-pages_per_eval_stack_v2_dedup = 9
-
-# validator eval batch size.
-batch_size = 1
 # validator eval batch min to keep for next loop.
 sample_min = 5
 # Max number of uids that can be either pending eval or currently being evaluated.

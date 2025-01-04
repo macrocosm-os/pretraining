@@ -77,15 +77,14 @@ def check_for_reasonable_output(
     return True
 
 
-def compute_text_losses(
+def compute_text_loss(
     model: PreTrainedModel,
     batches: typing.List[np.ndarray],
     device: str,
     pad_token_id: int,
-    sample_packing_used: bool,
-) -> typing.List[float]:
+) -> float:
     """
-    Computes the losses for a given model on provided batches.
+    Computes the average loss for a given model on provided batches.
 
     Parameters:
         model (torch.nn.Module): The model for which losses are to be computed.
@@ -127,20 +126,6 @@ def compute_text_losses(
                 shift_logits = logits[..., :-1, :].contiguous()
                 shift_labels = inputs[..., 1:].contiguous()
 
-                if not sample_packing_used:
-
-                    # If sample unpacking is used,
-                    # create a mask to indicate location of PAD tokens.
-                    # Note, PAD tokens are always set to EOS tokens,
-                    # For this reason, we want to ignore all but the
-                    # first EOS token (the real one)
-                    pad_mask = shift_labels == pad_token_id
-                    zeros = torch.zeros_like(shift_labels[..., :1])
-                    pad_mask = torch.cat((zeros, pad_mask[..., :-1]), dim=-1).bool()
-                    # Set all the padded labels to -100, since the
-                    # CrossEntropyLoss ignores -100 labels by default.
-                    shift_labels[pad_mask] = -100
-
                 # Flatten the tokens
                 loss_fct = torch.nn.CrossEntropyLoss()
                 shift_logits = shift_logits.view(-1, model.config.vocab_size)
@@ -148,13 +133,13 @@ def compute_text_losses(
                 loss = loss_fct(shift_logits, shift_labels).item()
 
                 losses.append(loss)
-            except Exception:
+            except Exception as e:
                 logging.error(
                     f"Exception occurred in reference loss computation: {traceback.format_exc()}"
                 )
-                losses.append(math.inf)  # Use infinity to indicate failure
+                return math.inf
 
-    return losses
+    return sum(losses) / len(losses) if losses else math.inf
 
 
 def generate_output(
