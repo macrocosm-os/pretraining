@@ -82,6 +82,7 @@ def compute_text_loss(
     batches: typing.List[np.ndarray],
     device: str,
     pad_token_id: int,
+    sample_packing_used: bool = True,
 ) -> float:
     """
     Computes the average loss for a given model on provided batches.
@@ -90,7 +91,8 @@ def compute_text_loss(
         model (torch.nn.Module): The model for which losses are to be computed.
         batches (List): A list of batches.
         device (str): The device to use for computation (e.g., 'cpu', 'gpu').
-        pad_token_id int: Pad token id for the tokenizer used to tokenize the batches.
+        pad_token_id (int): Pad token id for the tokenizer used to tokenize the batches.
+        sample_packing_used (bool): If sample packing was used.
 
     Returns:
         list: A list of losses for each batch.
@@ -125,6 +127,20 @@ def compute_text_loss(
                 # Shift the logits and labels to compute the loss.
                 shift_logits = logits[..., :-1, :].contiguous()
                 shift_labels = inputs[..., 1:].contiguous()
+
+                if not sample_packing_used:
+
+                    # If sample unpacking is used,
+                    # create a mask to indicate location of PAD tokens.
+                    # Note, PAD tokens are always set to EOS tokens,
+                    # For this reason, we want to ignore all but the
+                    # first EOS token (the real one)
+                    pad_mask = shift_labels == pad_token_id
+                    zeros = torch.zeros_like(shift_labels[..., :1])
+                    pad_mask = torch.cat((zeros, pad_mask[..., :-1]), dim=-1).bool()
+                    # Set all the padded labels to -100, since the
+                    # CrossEntropyLoss ignores -100 labels by default.
+                    shift_labels[pad_mask] = -100
 
                 # Flatten the tokens
                 loss_fct = torch.nn.CrossEntropyLoss()

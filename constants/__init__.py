@@ -168,8 +168,7 @@ COMPETITION_SCHEDULE_BY_BLOCK: List[Tuple[int, List[Competition]]] = [
                         name="FALCON",
                         method_id=EvalMethodId.TEXT_LOSS,
                         dataset_id=DatasetId.FALCON,
-                        normalization_id=NormalizationId.INVERSE_EXPONENTIAL,
-                        normalization_kwargs={"ceiling": 20.0},  # TODO: Adjust
+                        normalization_id=NormalizationId.NONE,
                         dataset_kwargs={
                             "batch_size": BATCH_SIZE,
                             "num_pages": PAGES_PER_EVAL,
@@ -187,8 +186,7 @@ COMPETITION_SCHEDULE_BY_BLOCK: List[Tuple[int, List[Competition]]] = [
                         name="FINEWEB",
                         method_id=EvalMethodId.TEXT_LOSS,
                         dataset_id=DatasetId.FINEWEB,
-                        normalization_id=NormalizationId.INVERSE_EXPONENTIAL,
-                        normalization_kwargs={"ceiling": 20.0},  # TODO: Adjust
+                        normalization_id=NormalizationId.NONE,
                         dataset_kwargs={
                             "batch_size": BATCH_SIZE,
                             "num_pages": PAGES_PER_EVAL,
@@ -208,8 +206,7 @@ COMPETITION_SCHEDULE_BY_BLOCK: List[Tuple[int, List[Competition]]] = [
                         name="FINEWEB",
                         method_id=EvalMethodId.TEXT_LOSS,
                         dataset_id=DatasetId.FINEWEB,
-                        normalization_id=NormalizationId.INVERSE_EXPONENTIAL,
-                        normalization_kwargs={"ceiling": 20.0},  # TODO: Adjust
+                        normalization_id=NormalizationId.NONE,
                         dataset_kwargs={
                             "batch_size": BATCH_SIZE,
                             "num_pages": PAGES_PER_EVAL,
@@ -220,8 +217,7 @@ COMPETITION_SCHEDULE_BY_BLOCK: List[Tuple[int, List[Competition]]] = [
                         name="STACKV2",
                         method_id=EvalMethodId.TEXT_LOSS,
                         dataset_id=DatasetId.STACK2,
-                        normalization_id=NormalizationId.INVERSE_EXPONENTIAL,
-                        normalization_kwargs={"ceiling": 20.0},  # TODO: Adjust
+                        normalization_id=NormalizationId.NONE,
                         dataset_kwargs={
                             "batch_size": BATCH_SIZE,
                             "num_pages": PAGES_PER_EVAL_STACK_V2_DEDUP,

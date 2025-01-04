@@ -123,6 +123,7 @@ class ScoreDetails:
     raw_score: typing.Optional[float] = None
     norm_score: typing.Optional[float] = None
     weighted_norm_score: typing.Optional[float] = None
+    num_samples: int = 0
 
 
 def score_model(
@@ -166,7 +167,6 @@ def score_model(
                         batches=samples,
                         device=device,
                         pad_token_id=tokenizer.eos_token_id,
-                        sample_packing_used=True,  # TODO: Remove all sample unpacking codepaths.
                     )
                 case _:
                     raise ValueError(f"Unhandled evaluation method {task.method_id}.")
@@ -181,6 +181,7 @@ def score_model(
                 raw_score=raw_score,
                 norm_score=normalized_score,
                 weighted_norm_score=weighted_norm_score,
+                num_samples=len(samples),
             )
 
     return score, score_details

@@ -964,16 +964,20 @@ class Validator:
                     sequence_length=competition.constraints.sequence_length,
                     tokenzier=tokenizer,
                 )
-                if data_loader:
+                batches = list(data_loader)
+                if batches:
                     eval_tasks.append(eval_task)
                     data_loaders.append(data_loader)
 
-                    batches = list(data_loader)
                     logging.debug(
                         f"Found {len(batches)} batches of size: {len(batches[0])} for data_loader: {data_loader.name} over pages {dataloader.get_page_names()}"
                     )
 
                     samples.append(batches)
+                else:
+                    raise ValueError(
+                        f"Did not find any data for data loader: {data_loader.name}"
+                    )
 
         logging.debug(f"Competition {competition.id} | Computing losses on {uids}")
 
@@ -982,7 +986,7 @@ class Validator:
             load_data_perf_14b_star = PerfMonitor("Eval: Load data 14b star")
 
             # This is a temporary hack until 14b star is itself a full competition.
-            eval_tasks_14b_star: typing.List[EvalTask] = []
+            eval_task_14b_star: EvalTask = None
             data_loaders_14b_star: typing.List[SubsetLoader] = []
             samples_14b_star: typing.List[typing.List[EvalSample]] = []
 
@@ -997,16 +1001,20 @@ class Validator:
                             sequence_length=competition_14b_star.constraints.sequence_length,
                             tokenzier=tokenizer,
                         )
-                        if data_loader:
-                            eval_tasks_14b_star.append(task_14b_star)
+                        batches_14_star = list(data_loader_14b_star)
+                        if batches_14_star:
+                            eval_task_14b_star = task_14b_star
                             data_loaders_14b_star.append(data_loader_14b_star)
 
-                            batches_14_star = list(data_loader_14b_star)
                             logging.debug(
                                 f"For 14b*: found {len(batches_14_star)} batches of size: {len(batches_14_star[0])} for data_loader: {data_loader_14b_star.name} over pages {data_loader_14b_star.get_page_names()}"
                             )
 
                             samples_14b_star.append(batches_14_star)
+                        else:
+                            raise ValueError(
+                                f"For 14b*: did not find any data for data loader: {data_loader_14b_star.name}"
+                            )
 
             compute_loss_perf_14b_star = PerfMonitor("Eval: Compute loss 14b star")
 
@@ -1022,9 +1030,7 @@ class Validator:
             score_details = {task.name: ScoreDetails() for task in eval_tasks}
             if running_14b_star:
                 score_14b_star: float = math.inf
-                score_details_14b_star = {
-                    task.name: ScoreDetails() for task in eval_tasks_14b_star
-                }
+                score_details_14b_star = {eval_task_14b_star.name: ScoreDetails()}
 
             logging.trace(f"Getting metadata for uid: {uid_i}.")
 
@@ -1083,7 +1089,7 @@ class Validator:
                                         functools.partial(
                                             pt.validation.score_model,
                                             model_i,
-                                            eval_tasks_14b_star,
+                                            [eval_task_14b_star],
                                             samples_14b_star,
                                             self.config.device,
                                             tokenizer.eos_token_id,
@@ -1116,21 +1122,33 @@ class Validator:
             if running_14b_star:
                 # Make a deep copy of the current uid_to_state, average out the scores, and append new details.
                 uid_to_state_14b_star[uid_i] = copy.deepcopy(uid_to_state[uid_i])
-                # For scores we want an 85% / 15% ratio between the first score and the second.
-                uid_to_state_14b_star[uid_i].score = (
-                    uid_to_state[uid_i].score * 0.85 + score_14b_star * 0.15
+                # For scores we know there are only two tasks, so we weight it by the additional 14b task.
+                num_fineweb_samples = score_details["FINEWEB"].num_samples
+                num_stack_samples = score_details_14b_star["STACKV2"].num_samples
+                total_samples = num_fineweb_samples + num_stack_samples
+                fineweb_weighted_score = score * num_fineweb_samples / total_samples
+                stack_weighted_score = (
+                    score_14b_star * num_fineweb_samples / total_samples
                 )
+
+                uid_to_state_14b_star[uid_i].score = (
+                    fineweb_weighted_score + stack_weighted_score
+                )
+
                 # We also need to adjust the weighted score details as each thinks it was 100%.
                 # 14B only runs FINEWEB so we can just adjust this one score details.
                 uid_to_state_14b_star[uid_i].score_details[
                     "FINEWEB"
-                ].weighted_norm_score *= 0.85
+                ].weighted_norm_score = fineweb_weighted_score
                 # Likewise we know 14B* only adds Stack V2
-                score_details_14b_star["STACKV2"].weighted_norm_score *= 0.15
+                score_details_14b_star["STACKV2"].weighted_norm_score = (
+                    stack_weighted_score
+                )
                 # And copy over into the new score details dictionary.
                 uid_to_state_14b_star[uid_i].score_details["STACKV2"] = (
                     score_details_14b_star["STACKV2"]
                 )
+
                 logging.info(
                     f"Computed 14b* model score for uid: {uid_i} with score: {uid_to_state_14b_star[uid_i].score}. Details: {uid_to_state_14b_star[uid_i].score_details}"
                 )
@@ -1253,7 +1271,7 @@ class Validator:
             self.log_step(
                 CompetitionId.B14_MODEL_MULTI_DATASET,
                 competition.constraints.epsilon_func,
-                eval_tasks_14b_star,
+                [eval_task_14b_star],
                 cur_block,
                 uids,
                 uid_to_state_14b_star,
