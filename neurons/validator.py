@@ -149,12 +149,14 @@ class Validator:
         # === Bittensor objects ====
         self.wallet = bt.wallet(config=self.config)
         self.subtensor = bt.subtensor(config=self.config)
+        self.weights_subtensor = bt.subtensor(config=self.config)
         self.dendrite = bt.dendrite(wallet=self.wallet)
         # self.metagraph = self.subtensor.metagraph(self.config.netuid, lite=False)
 
         # Setup metagraph syncer for the subnet based on config. This is non-lite for getting weights by vali.
+        syncer_subtensor = bt.subtensor(config=self.config)
         self.subnet_metagraph_syncer = MetagraphSyncer(
-            self.subtensor,
+            syncer_subtensor,
             config={
                 self.config.netuid: dt.timedelta(minutes=20).total_seconds(),
             },
@@ -188,9 +190,9 @@ class Validator:
             self._new_wandb_run()
 
         # === Running args ===
+        self.weight_lock = threading.RLock()
         self.weights = torch.zeros_like(torch.from_numpy(self.metagraph.S))
         self.global_step = 0
-        self.last_epoch = self.metagraph.block.item()
 
         self.uids_to_eval: typing.Dict[CompetitionId, typing.Set] = defaultdict(set)
 
@@ -265,6 +267,22 @@ class Validator:
                     f"Failed to load competition tracker state. Reason: {e}. Starting from scratch."
                 )
 
+        # Also update our internal weights based on the tracker.
+        cur_block = self._get_current_block()
+
+        # Get the competition schedule for the current block.
+        # This is a list of competitions
+        competition_schedule: typing.List[Competition] = (
+            competition_utils.get_competition_schedule_for_block(
+                block=cur_block,
+                schedule_by_block=constants.COMPETITION_SCHEDULE_BY_BLOCK,
+            )
+        )
+        with self.weight_lock:
+            self.weights = self.competition_tracker.get_subnet_weights(
+                competition_schedule
+            )
+
         # Initialize the UIDs to eval.
         if not os.path.exists(self.uids_filepath):
             logging.warning("No uids state file found. Starting from scratch.")
@@ -290,8 +308,9 @@ class Validator:
         self.miner_iterator = MinerIterator(self.metagraph.uids.tolist())
 
         # Setup a ModelMetadataStore
+        chain_store_subtensor = bt.subtensor(config=self.config)
         self.metadata_store = ChainModelMetadataStore(
-            subtensor=self.subtensor,
+            subtensor=chain_store_subtensor,
             subnet_uid=self.config.netuid,
             wallet=self.wallet,
         )
@@ -321,6 +340,11 @@ class Validator:
         # == Initialize the cleaner thread to remove outdated models ==
         self.clean_thread = threading.Thread(target=self.clean_models, daemon=True)
         self.clean_thread.start()
+
+        # == Initialize the weight setting thread ==
+        if not self.config.offline:
+            self.weight_thread = threading.Thread(target=self.set_weights, daemon=True)
+            self.weight_thread.start()
 
     def __del__(self):
         if hasattr(self, "stop_event"):
@@ -716,33 +740,72 @@ class Validator:
 
         logging.info("Exiting clean models loop.")
 
-    async def try_set_weights(self, block: int, ttl: int):
+    def set_weights(self):
+        """Set weights on the chain regularly."""
+
+        # Check that we have some weights internally for startup situations.
+        all_zero_weights = True
+        while all_zero_weights is True:
+            # Technically returns a tensor but it evaluates to true.
+            with self.weight_lock:
+                all_zero_weights = torch.all(self.weights == 0)
+            logging.trace(
+                "Waiting 60 seconds for internal weights before continuing to try set weights."
+            )
+            time.sleep(60)
+
+        while not self.stop_event.is_set():
+            try:
+                set_weights_success = False
+                while not set_weights_success:
+                    set_weights_success, _ = asyncio.run(self.try_set_weights(ttl=60))
+                    # Wait for 60 seconds before we try to set weights again.
+                    if set_weights_success:
+                        logging.info("Successfully set weights.")
+                    else:
+                        time.sleep(60)
+            except Exception as e:
+                logging.error(f"Error in set weights: {e}")
+
+            # Only set weights once every hour
+            time.sleep(60 * 60)
+
+        logging.info("Exiting set weights loop.")
+
+    async def try_set_weights(self, ttl: int) -> typing.Tuple[bool, str]:
         """Sets the weights on the chain with ttl, without raising exceptions if it times out."""
 
-        async def _try_set_weights():
+        async def _try_set_weights() -> typing.Tuple[bool, str]:
             with self.metagraph_lock:
                 uids = self.metagraph.uids
             try:
-                self.weights.nan_to_num(0.0)
-                self.subtensor.set_weights(
+                with self.weight_lock:
+                    self.weights.nan_to_num(0.0)
+                    weights_to_set = self.weights
+
+                return self.weights_subtensor.set_weights(
                     netuid=self.config.netuid,
                     wallet=self.wallet,
                     uids=uids,
-                    weights=self.weights.numpy(),
-                    wait_for_inclusion=False,
+                    weights=weights_to_set.numpy(),
+                    wait_for_inclusion=True,
                     version_key=constants.weights_version_key,
+                    max_retries=1,
                 )
-                # We only update the last epoch when we successfully set weights.
-                self.last_epoch = block
-            except:
-                logging.warning("Failed to set weights. Trying again later.")
+            except Exception as e:
+                logging.warning(
+                    f"Failed to set weights due to {e}. Trying again later."
+                )
+                return (False, str(e))
 
         try:
             logging.debug(f"Setting weights.")
-            await asyncio.wait_for(_try_set_weights(), ttl)
-            logging.debug(f"Finished setting weights.")
+            status = await asyncio.wait_for(_try_set_weights(), ttl)
+            logging.debug(f"Finished setting weights with status: {status}.")
+            return status
         except asyncio.TimeoutError:
             logging.error(f"Failed to set weights after {ttl} seconds")
+            return (False, f"Timeout after {ttl} seconds")
 
     def _get_current_block(self) -> int:
         """Returns the current block."""
@@ -1089,7 +1152,10 @@ class Validator:
         # Align competition_tracker to only track active competitions.
         self.competition_tracker.reset_competitions(active_competition_ids)
         # Update self.weights to the merged values across active competitions.
-        self.weights = self.competition_tracker.get_subnet_weights(competition_schedule)
+        with self.weight_lock:
+            self.weights = self.competition_tracker.get_subnet_weights(
+                competition_schedule
+            )
 
         # Prioritize models for keeping up to the sample_min for the next eval loop.
         # If the model has any significant weight, prioritize by weight with greater weights being kept first.
@@ -1336,6 +1402,10 @@ class Validator:
             competition_id
         )
 
+        # Get a copy of weights to print.
+        with self.weight_lock:
+            log_weights = self.weights
+
         # All uids in the competition step log are from the same competition.
         for uid in uids:
             step_log["uid_data"][str(uid)] = {
@@ -1350,7 +1420,7 @@ class Validator:
                 # We use 0 in the case where a uid was not competitive and therefore not used in win rate calcs.
                 "win_rate": win_rate[uid] if uid in win_rate else 0,
                 "win_total": wins[uid] if uid in wins else 0,
-                "weight": self.weights[uid].item(),
+                "weight": log_weights[uid].item(),
                 "norm_weight": sub_competition_weights[uid].item(),
                 "dataset_perf": {},
             }
@@ -1382,7 +1452,7 @@ class Validator:
                     str(round(step_log["uid_data"][str(uid)]["epsilon_adv"], 4)),
                     str(round(step_log["uid_data"][str(uid)]["win_rate"], 4)),
                     str(step_log["uid_data"][str(uid)]["win_total"]),
-                    str(round(self.weights[uid].item(), 4)),
+                    str(round(log_weights[uid].item(), 4)),
                     str(round(sub_competition_weights[uid].item(), 4)),
                     str(step_log["uid_data"][str(uid)]["block"]),
                     str(step_log["uid_data"][str(uid)]["competition_id"]),
@@ -1392,7 +1462,7 @@ class Validator:
         console = Console()
         console.print(table)
 
-        ws, ui = self.weights.topk(len(self.weights))
+        ws, ui = self.weights.topk(len(log_weights))
         table = Table(title="Weights > 0.001")
         table.add_column("uid", justify="right", style="cyan", no_wrap=True)
         table.add_column("weight", style="magenta")
@@ -1443,7 +1513,7 @@ class Validator:
                 "win_total_data": {
                     str(uid): uid_data[str(uid)]["win_total"] for uid in uids
                 },
-                "weight_data": {str(uid): self.weights[uid].item() for uid in uids},
+                "weight_data": {str(uid): log_weights[uid].item() for uid in uids},
                 "competition_weight_data": {
                     str(uid): sub_competition_weights[uid].item() for uid in uids
                 },
@@ -1492,22 +1562,9 @@ class Validator:
         """Runs the validator loop, which continuously evaluates models and sets weights."""
         while True:
             try:
-                # First run a step.
                 await self.try_run_step(ttl=120 * 60)
                 self.global_step += 1
 
-                block = self._get_current_block()
-
-                # Then check if we should set weights and do so if needed.
-                if not self.config.dont_set_weights and not self.config.offline:
-                    blocks_until_epoch = block - self.last_epoch
-
-                    if blocks_until_epoch >= self.config.blocks_per_epoch:
-                        await self.try_set_weights(block=block, ttl=60)
-                    else:
-                        logging.debug(
-                            f"{blocks_until_epoch} / {self.config.blocks_per_epoch} blocks until next epoch."
-                        )
             except KeyboardInterrupt:
                 logging.info(
                     "KeyboardInterrupt caught, gracefully closing the wandb run..."
