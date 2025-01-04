@@ -545,7 +545,7 @@ class Validator:
                 except MinerMisconfiguredError as e:
                     self.model_tracker.on_model_evaluated(
                         hotkey,
-                        0, # Technically this is B7 but that is unused.
+                        0,  # Technically this is B7 but that is unused.
                         EvalResult(
                             block=curr_block,
                             score=math.inf,
@@ -644,7 +644,7 @@ class Validator:
                     except MinerMisconfiguredError as e:
                         self.model_tracker.on_model_evaluated(
                             hotkey,
-                            0, # Technically this is B7 but that is unused.
+                            0,  # Technically this is B7 but that is unused.
                             EvalResult(
                                 block=curr_block,
                                 score=math.inf,
@@ -1062,7 +1062,7 @@ class Validator:
                         # Run each computation in a subprocess so that the GPU is reset between each model.
                         losses = utils.run_in_subprocess(
                             functools.partial(
-                                pt.validation.compute_losses,
+                                pt.eval.method.compute_text_losses,
                                 model_i.pt_model,
                                 batches,
                                 self.config.device,
@@ -1077,7 +1077,7 @@ class Validator:
                             try:
                                 losses_14b_star = utils.run_in_subprocess(
                                     functools.partial(
-                                        pt.validation.compute_losses,
+                                        pt.eval.method.compute_text_losses,
                                         model_i.pt_model,
                                         batches_14b_star,
                                         self.config.device,
