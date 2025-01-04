@@ -545,7 +545,7 @@ class Validator:
                 except MinerMisconfiguredError as e:
                     self.model_tracker.on_model_evaluated(
                         hotkey,
-                        0,
+                        0, # Technically this is B7 but that is unused.
                         EvalResult(
                             block=curr_block,
                             score=math.inf,
@@ -644,7 +644,7 @@ class Validator:
                     except MinerMisconfiguredError as e:
                         self.model_tracker.on_model_evaluated(
                             hotkey,
-                            0,
+                            0, # Technically this is B7 but that is unused.
                             EvalResult(
                                 block=curr_block,
                                 score=math.inf,
@@ -926,10 +926,7 @@ class Validator:
 
         logging.trace(f"Current block: {cur_block}")
 
-        if cur_block < constants.BLOCK_STACK_V2_DEDUP:
-            dataset_by_competition_id = constants.DATASET_BY_COMPETITION_ID
-        else:
-            dataset_by_competition_id = constants.DATASET_BY_COMPETITION_ID_2
+        dataset_by_competition_id = constants.DATASET_BY_COMPETITION_ID
 
         # Get the dataloader for this competition
         SubsetDataLoader = dataset_by_competition_id[competition.id]
@@ -988,11 +985,7 @@ class Validator:
         logging.debug(f"Pages used are {pages}")
 
         if running_14b_star:
-
-            if cur_block < constants.BLOCK_STACK_V2_DEDUP:
-                num_pages_code_dataset = constants.pages_per_eval_stack_v1_dedup
-            else:
-                num_pages_code_dataset = constants.pages_per_eval_stack_v2_dedup
+            num_pages_code_dataset = constants.pages_per_eval_stack_v2_dedup
 
             dataloader_14b_star = SubsetDataLoader_14b_star(
                 batch_size=constants.batch_size,
