@@ -20,6 +20,7 @@ from taoverse.model.storage.chain.chain_model_metadata_store import (
 from taoverse.model.storage.hugging_face.hugging_face_model_store import (
     HuggingFaceModelStore,
 )
+from taoverse.utilities import utils as taoverse_utils
 from taoverse.utilities.enum_action import IntEnumAction
 import pretrain as pt
 import bittensor as bt
@@ -83,6 +84,8 @@ def get_config():
 async def main(config: bt.config):
     # Create bittensor objects.
     bt.logging(config=config)
+    taoverse_utils.logging.reinitialize()
+    taoverse_utils.configure_logging(config)
 
     wallet = bt.wallet(config=config)
     subtensor = bt.subtensor(config=config)

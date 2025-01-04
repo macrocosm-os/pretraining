@@ -36,15 +36,14 @@ import time
 import traceback
 import typing
 from collections import defaultdict
-from retry import retry
 
 import bittensor as bt
-from bittensor.utils.btlogging.helpers import all_loggers
-from bittensor.utils.btlogging.defines import BITTENSOR_LOGGER_NAME
 import torch
 import wandb
-
+from bittensor.utils.btlogging.defines import BITTENSOR_LOGGER_NAME
+from bittensor.utils.btlogging.helpers import all_loggers
 from huggingface_hub.utils import RepositoryNotFoundError, RevisionNotFoundError
+from retry import retry
 from rich.console import Console
 from rich.table import Table
 from taoverse.metagraph import utils as metagraph_utils
@@ -65,7 +64,7 @@ from taoverse.model.storage.disk.disk_model_store import DiskModelStore
 from taoverse.model.storage.hugging_face.hugging_face_model_store import (
     HuggingFaceModelStore,
 )
-from taoverse.utilities import utils
+from taoverse.utilities import logging, utils
 from taoverse.utilities.perf_monitor import PerfMonitor
 
 import constants
@@ -128,19 +127,24 @@ class Validator:
         """
         return os.path.join(self.config.model_dir, "vali-state")
 
-    def __init__(self):
-        self.config = config.validator_config()
-        # Manually default to info before overriding with arguments.
-        # If this is not done then info logging does not work in the cases where other modes are not specified.
-        bt.logging.set_info()
-        bt.logging(config=self.config)
+    def _configure_logging(self, config: bt.config) -> None:
+        # BT logging is noisy, so set it to only log errors.
+        bt.logging.set_warning()
 
         # Setting logging level on bittensor messes with all loggers, which we don't want, so set explicitly to warning here.
         for logger in all_loggers():
             if not logger.name.startswith(BITTENSOR_LOGGER_NAME):
                 logger.setLevel(logging.WARNING)
 
-        bt.logging.info(f"Starting validator with config: {self.config}")
+        # Configure the Taoverse logger, which is our primary logger.
+        utils.logging.reinitialize()
+        utils.configure_logging(config)
+
+    def __init__(self):
+        self.config = config.validator_config()
+        self._configure_logging(self.config)
+
+        logging.info(f"Starting validator with config: {self.config}")
 
         # === Bittensor objects ====
         self.wallet = bt.wallet(config=self.config)
@@ -223,62 +227,60 @@ class Validator:
 
         # If this is an upgrade, blow away state so that everything is re-evaluated.
         if previous_version != constants.__spec_version__:
-            bt.logging.info(
+            logging.info(
                 f"Validator updated. Previous version={previous_version}. Current version={constants.__spec_version__}"
             )
             if os.path.exists(self.uids_filepath):
-                bt.logging.info(
+                logging.info(
                     f"Because the validator updated, deleting {self.uids_filepath} so everything is re-evaluated."
                 )
                 os.remove(self.uids_filepath)
             if os.path.exists(self.model_tracker_filepath):
-                bt.logging.info(
+                logging.info(
                     f"Because the validator updated, deleting {self.model_tracker_filepath} so everything is re-evaluated."
                 )
                 os.remove(self.model_tracker_filepath)
 
         # Initialize the model tracker.
         if not os.path.exists(self.model_tracker_filepath):
-            bt.logging.warning(
-                "No model tracker state file found. Starting from scratch."
-            )
+            logging.warning("No model tracker state file found. Starting from scratch.")
         else:
             try:
                 self.model_tracker.load_state(self.model_tracker_filepath)
             except Exception as e:
-                bt.logging.warning(
+                logging.warning(
                     f"Failed to load model tracker state. Reason: {e}. Starting from scratch."
                 )
 
         # Initialize the competition tracker.
         if not os.path.exists(self.competition_tracker_filepath):
-            bt.logging.warning(
+            logging.warning(
                 "No competition tracker state file found. Starting from scratch."
             )
         else:
             try:
                 self.competition_tracker.load_state(self.competition_tracker_filepath)
             except Exception as e:
-                bt.logging.warning(
+                logging.warning(
                     f"Failed to load competition tracker state. Reason: {e}. Starting from scratch."
                 )
 
         # Initialize the UIDs to eval.
         if not os.path.exists(self.uids_filepath):
-            bt.logging.warning("No uids state file found. Starting from scratch.")
+            logging.warning("No uids state file found. Starting from scratch.")
         else:
             try:
                 with open(self.uids_filepath, "rb") as f:
                     self.uids_to_eval = pickle.load(f)
                     self.pending_uids_to_eval = pickle.load(f)
             except Exception as e:
-                bt.logging.warning(
+                logging.warning(
                     f"Failed to load uids to eval state. Reason: {e}. Starting from scratch."
                 )
                 # We also need to wipe the model tracker state in this case to ensure we re-evaluate all the models.
                 self.model_tracker = ModelTracker()
                 if os.path.exists(self.model_tracker_filepath):
-                    bt.logging.warning(
+                    logging.warning(
                         f"Because the uids to eval state failed to load, deleting model tracker state at {self.model_tracker_filepath} so everything is re-evaluated."
                     )
                     os.remove(self.model_tracker_filepath)
@@ -347,12 +349,12 @@ class Validator:
             allow_val_change=True,
         )
 
-        bt.logging.debug(f"Started a new wandb run: {name}")
+        logging.debug(f"Started a new wandb run: {name}")
 
     def save_state(self):
         """Saves the state of the validator to a file."""
 
-        bt.logging.trace("Saving validator state.")
+        logging.trace("Saving validator state.")
         if not os.path.exists(self.state_path()):
             os.makedirs(self.state_path())
 
@@ -428,7 +430,7 @@ class Validator:
                     time_to_sleep = (
                         constants.chain_update_cadence - time_diff
                     ).total_seconds()
-                    bt.logging.trace(
+                    logging.trace(
                         f"Update loop has already processed all UIDs in the last {constants.chain_update_cadence}. Sleeping {time_to_sleep} seconds."
                     )
                     time.sleep(time_to_sleep)
@@ -476,7 +478,7 @@ class Validator:
                             eval_history,
                         )
                         if force_sync:
-                            bt.logging.debug(
+                            logging.debug(
                                 f"Force downloading model for UID {next_uid} because it should be retried. Eval_history={eval_history}"
                             )
 
@@ -501,7 +503,7 @@ class Validator:
                                 )
                                 if force_sync_14b_star:
                                     # Even if it is already logging for 14B, also log for 14B*.
-                                    bt.logging.debug(
+                                    logging.debug(
                                         f"Force downloading model for UID {next_uid} because it should be retried for 14B*. Eval_history={eval_history_14b_star}"
                                     )
                                     force_sync = True
@@ -539,24 +541,22 @@ class Validator:
                             self.pending_uids_to_eval[metadata.id.competition_id].add(
                                 next_uid
                             )
-                            bt.logging.debug(
+                            logging.debug(
                                 f"Found a new model for UID={next_uid} for competition {metadata.id.competition_id}. It will be evaluated on the next loop."
                             )
                     else:
-                        bt.logging.warning(
+                        logging.warning(
                             f"Failed to find metadata for uid {next_uid} with hotkey {hotkey}"
                         )
 
             except (RepositoryNotFoundError, RevisionNotFoundError) as e:
-                bt.logging.trace(e)
+                logging.trace(e)
             except MinerMisconfiguredError as e:
-                bt.logging.trace(e)
+                logging.trace(e)
             except Exception as e:
-                bt.logging.error(
-                    f"Error in update loop: {e} \n {traceback.format_exc()}"
-                )
+                logging.error(f"Error in update loop: {e} \n {traceback.format_exc()}")
 
-        bt.logging.info("Exiting update models loop.")
+        logging.info("Exiting update models loop.")
 
     def _wait_for_open_eval_slot(self) -> None:
         """Waits until there is at least one slot open to download and evaluate a model."""
@@ -564,7 +564,7 @@ class Validator:
 
         while pending_uid_count + current_uid_count >= self.config.updated_models_limit:
             # Wait 5 minutes for the eval loop to process them.
-            bt.logging.info(
+            logging.info(
                 f"Update loop: There are already {pending_uid_count + current_uid_count} synced models pending eval. Checking again in 5 minutes."
             )
             time.sleep(300)
@@ -645,7 +645,7 @@ class Validator:
                         self.model_tracker.get_model_metadata_for_miner_hotkey(hotkey)
                     )
                     if top_model_metadata is not None:
-                        bt.logging.trace(
+                        logging.trace(
                             f"Shortcutting to top model or retrying evaluation for previously discarded top model with incentive for UID={uid}"
                         )
                         with self.pending_uids_to_eval_lock:
@@ -653,12 +653,12 @@ class Validator:
                                 top_model_metadata.id.competition_id
                             ].add(uid)
                     else:
-                        bt.logging.warning(
+                        logging.warning(
                             f"Failed to find metadata for uid {uid} with hotkey {hotkey}"
                         )
 
                 except Exception:
-                    bt.logging.debug(
+                    logging.debug(
                         f"Failure in update loop for UID={uid} during top model check. {traceback.format_exc()}"
                     )
 
@@ -673,7 +673,7 @@ class Validator:
         # The below loop checks to clear out all models in local storage that are no longer referenced.
         while not self.stop_event.is_set():
             try:
-                bt.logging.trace("Starting cleanup of stale models.")
+                logging.trace("Starting cleanup of stale models.")
 
                 # Get a mapping of all hotkeys to model ids.
                 hotkey_to_model_metadata = (
@@ -709,12 +709,12 @@ class Validator:
                     grace_period_seconds=600,
                 )
             except Exception as e:
-                bt.logging.error(f"Error in clean loop: {e}")
+                logging.error(f"Error in clean loop: {e}")
 
             # Only check every 5 minutes.
             time.sleep(dt.timedelta(minutes=5).total_seconds())
 
-        bt.logging.info("Exiting clean models loop.")
+        logging.info("Exiting clean models loop.")
 
     async def try_set_weights(self, block: int, ttl: int):
         """Sets the weights on the chain with ttl, without raising exceptions if it times out."""
@@ -735,17 +735,18 @@ class Validator:
                 # We only update the last epoch when we successfully set weights.
                 self.last_epoch = block
             except:
-                bt.logging.warning("Failed to set weights. Trying again later.")
+                logging.warning("Failed to set weights. Trying again later.")
 
         try:
-            bt.logging.debug(f"Setting weights.")
+            logging.debug(f"Setting weights.")
             await asyncio.wait_for(_try_set_weights(), ttl)
-            bt.logging.debug(f"Finished setting weights.")
+            logging.debug(f"Finished setting weights.")
         except asyncio.TimeoutError:
-            bt.logging.error(f"Failed to set weights after {ttl} seconds")
+            logging.error(f"Failed to set weights after {ttl} seconds")
 
     def _get_current_block(self) -> int:
         """Returns the current block."""
+
         @retry(tries=5, delay=1, backoff=2)
         def _get_block_with_retry():
             return self.subtensor.block
@@ -753,7 +754,7 @@ class Validator:
         try:
             return _get_block_with_retry()
         except:
-            bt.logging.debug(
+            logging.debug(
                 "Failed to get the latest block from the chain. Using the block from the cached metagraph."
             )
             # Network call failed. Fallback to using the block from the metagraph,
@@ -766,13 +767,11 @@ class Validator:
     ) -> None:
         """Processes an update to the metagraph for the subnet."""
         if netuid != self.config.netuid:
-            bt.logging.error(
-                f"Unexpected subnet uid in subnet metagraph syncer: {netuid}"
-            )
+            logging.error(f"Unexpected subnet uid in subnet metagraph syncer: {netuid}")
             return
 
         with self.metagraph_lock:
-            bt.logging.info("Synced metagraph")
+            logging.info("Synced metagraph")
             self.metagraph = copy.deepcopy(metagraph)
             self.miner_iterator.set_miner_uids(self.metagraph.uids.tolist())
             self.model_tracker.on_hotkeys_updated(set(self.metagraph.hotkeys))
@@ -784,11 +783,11 @@ class Validator:
             await self.run_step()
 
         try:
-            bt.logging.trace("Running step.")
+            logging.trace("Running step.")
             await asyncio.wait_for(_try_run_step(), ttl)
-            bt.logging.trace("Finished running step.")
+            logging.trace("Finished running step.")
         except asyncio.TimeoutError:
-            bt.logging.error(f"Failed to run step after {ttl} seconds")
+            logging.error(f"Failed to run step after {ttl} seconds")
 
     async def run_step(self):
         """
@@ -817,12 +816,12 @@ class Validator:
         competition = competition_schedule[self.global_step % len(competition_schedule)]
         # If the competition is 14b* we skip it since we run it concurrently with 14b instead.
         if competition.id == CompetitionId.B14_MODEL_MULTI_DATASET:
-            bt.logging.info(
+            logging.info(
                 "Skipping step for B14* competition. It will be evaluated as part of the regular B14 competition."
             )
             return
 
-        bt.logging.info("Starting evaluation for competition: " + str(competition.id))
+        logging.info("Starting evaluation for competition: " + str(competition.id))
 
         running_14b_star = competition.id == CompetitionId.B14_MODEL and any(
             comp.id == CompetitionId.B14_MODEL_MULTI_DATASET
@@ -835,7 +834,7 @@ class Validator:
                 block=cur_block,
                 schedule_by_block=constants.COMPETITION_SCHEDULE_BY_BLOCK,
             )
-            bt.logging.info("Additionally running competition 14B* in parallel to 14B.")
+            logging.info("Additionally running competition 14B* in parallel to 14B.")
 
         # Add uids with newly updated models to the upcoming batch of evaluations.
         with self.pending_uids_to_eval_lock:
@@ -848,13 +847,13 @@ class Validator:
         uids = list(self.uids_to_eval[competition.id])
 
         if not uids:
-            bt.logging.debug(f"No uids to eval for competition {competition.id}.")
+            logging.debug(f"No uids to eval for competition {competition.id}.")
             # Check if no competitions have uids, if so wait 5 minutes to download.
             pending_uid_count, current_uid_count = (
                 self.get_pending_and_current_uid_counts()
             )
             if pending_uid_count + current_uid_count == 0:
-                bt.logging.debug(
+                logging.debug(
                     "No uids to eval for any competition. Waiting 5 minutes to download models."
                 )
                 time.sleep(300)
@@ -862,7 +861,7 @@ class Validator:
 
         uid_to_state = defaultdict(PerUIDEvalState)
 
-        bt.logging.trace(f"Current block: {cur_block}")
+        logging.trace(f"Current block: {cur_block}")
 
         if cur_block < constants.BLOCK_STACK_V2_DEDUP:
             dataset_by_competition_id = constants.DATASET_BY_COMPETITION_ID
@@ -872,7 +871,7 @@ class Validator:
         # Get the dataloader for this competition
         SubsetDataLoader = dataset_by_competition_id[competition.id]
 
-        bt.logging.trace(f"Dataset in use: {SubsetDataLoader.name}.")
+        logging.trace(f"Dataset in use: {SubsetDataLoader.name}.")
 
         if running_14b_star:
             # This will be set to a copy of 14b later with the additional eval losses appended.
@@ -882,7 +881,7 @@ class Validator:
             SubsetDataLoader_14b_star = dataset_by_competition_id[
                 CompetitionId.B14_MODEL_MULTI_DATASET
             ]
-            bt.logging.trace(
+            logging.trace(
                 f"Additionally using 14b* dataset: {SubsetDataLoader_14b_star.name}."
             )
 
@@ -903,8 +902,8 @@ class Validator:
         except:
             seed = None
 
-        bt.logging.debug(f"Number of pages per evaluation step is: {pages_per_eval}.")
-        bt.logging.debug(f"Seed used for loading data is: {seed}.")
+        logging.debug(f"Number of pages per evaluation step is: {pages_per_eval}.")
+        logging.debug(f"Seed used for loading data is: {seed}.")
 
         dataloader = SubsetDataLoader(
             batch_size=constants.batch_size,
@@ -916,14 +915,14 @@ class Validator:
         )
 
         batches = list(dataloader)
-        bt.logging.debug(f"Number of validation batches is {len(batches)}")
-        bt.logging.debug(f"Batch size is {len(batches[0])}")
+        logging.debug(f"Number of validation batches is {len(batches)}")
+        logging.debug(f"Batch size is {len(batches[0])}")
 
         # This is useful for logging to wandb
         pages = dataloader.get_page_names()
 
-        bt.logging.debug(f"Competition {competition.id} | Computing losses on {uids}")
-        bt.logging.debug(f"Pages used are {pages}")
+        logging.debug(f"Competition {competition.id} | Computing losses on {uids}")
+        logging.debug(f"Pages used are {pages}")
 
         if running_14b_star:
 
@@ -942,15 +941,15 @@ class Validator:
             )
 
             batches_14b_star = list(dataloader_14b_star)
-            bt.logging.debug(
+            logging.debug(
                 f"Number of 14b* validation batches is {len(batches_14b_star)}"
             )
-            bt.logging.debug(f"14b* Batch size is {len(batches_14b_star[0])}")
+            logging.debug(f"14b* Batch size is {len(batches_14b_star[0])}")
 
             # This is useful for logging to wandb
             pages_14b_star = dataloader_14b_star.get_page_names()
 
-            bt.logging.debug(f"14b* Pages used are {pages_14b_star}")
+            logging.debug(f"14b* Pages used are {pages_14b_star}")
 
             compute_loss_perf_14b_star = PerfMonitor("Eval: Compute loss 14b star")
 
@@ -969,7 +968,7 @@ class Validator:
                     math.inf for _ in range(len(batches_14b_star))
                 ]
 
-            bt.logging.trace(f"Getting metadata for uid: {uid_i}.")
+            logging.trace(f"Getting metadata for uid: {uid_i}.")
 
             # Check that the model is in the tracker.
             with self.metagraph_lock:
@@ -985,7 +984,7 @@ class Validator:
                 and model_i_metadata.id.competition_id == competition.id
             ):
                 try:
-                    bt.logging.info(
+                    logging.info(
                         f"Evaluating uid: {uid_i} / hotkey: {hotkey} with metadata: {model_i_metadata} and hf_url: {model_utils.get_hf_url(model_i_metadata)}."
                     )
 
@@ -1033,22 +1032,22 @@ class Validator:
                                     mode="spawn",
                                 )
                             except Exception as e:
-                                bt.logging.error(
+                                logging.error(
                                     f"Error in eval loop: {e}. Setting 14b* losses for uid: {uid_i} to infinity."
                                 )
                     del model_i
 
                 except Exception as e:
-                    bt.logging.error(
+                    logging.error(
                         f"Error in eval loop: {e}. Setting losses for uid: {uid_i} to infinity."
                     )
             else:
-                bt.logging.debug(
+                logging.debug(
                     f"Unable to load the model for {uid_i} or it belongs to another competition. Setting loss to inifinity for this competition."
                 )
 
             uid_to_state[uid_i].losses[SubsetDataLoader.name] = losses
-            bt.logging.trace(
+            logging.trace(
                 f"Computed model losses for uid:{uid_i} with average loss: {uid_to_state[uid_i].avg_loss()}"
             )
 
@@ -1058,7 +1057,7 @@ class Validator:
                 uid_to_state_14b_star[uid_i].losses[
                     SubsetDataLoader_14b_star.name
                 ] = losses_14b_star
-                bt.logging.trace(
+                logging.trace(
                     f"Computed 14b* model losses for uid:{uid_i} with average loss: {uid_to_state_14b_star[uid_i].avg_loss()}. Details: {uid_to_state_14b_star[uid_i].avg_loss_per_dataset()}"
                 )
 
@@ -1141,8 +1140,8 @@ class Validator:
         self.save_state()
 
         # Log the performance of the eval loop.
-        bt.logging.debug(load_model_perf.summary_str())
-        bt.logging.debug(compute_loss_perf.summary_str())
+        logging.debug(load_model_perf.summary_str())
+        logging.debug(compute_loss_perf.summary_str())
 
         # Log to screen and wandb.
         self.log_step(
@@ -1160,7 +1159,7 @@ class Validator:
         )
 
         if running_14b_star:
-            bt.logging.debug(compute_loss_perf_14b_star.summary_str())
+            logging.debug(compute_loss_perf_14b_star.summary_str())
 
             uids_to_competition_ids_14b_star = {
                 k: (
@@ -1216,7 +1215,7 @@ class Validator:
         # Log which models got dropped for the second pass.
         dropped_uids = [uid for uid in uids if uid not in competitive_uids]
         if dropped_uids:
-            bt.logging.info(
+            logging.info(
                 f"The following uids were not included in the win rate calculation because they did not beat the fully decayed loss of any previously submitted model in this eval batch: {dropped_uids}."
             )
 
@@ -1273,7 +1272,7 @@ class Validator:
                 set(self.uids_to_eval.keys()) | set(self.pending_uids_to_eval.keys())
             ) - active_competitions
             for comp in comps_to_delete:
-                bt.logging.debug(
+                logging.debug(
                     f"Cleaning up uids to eval from sunset competition {comp}."
                 )
                 if comp in self.uids_to_eval:
@@ -1409,7 +1408,7 @@ class Validator:
         console.print(table)
 
         # Sink step log.
-        bt.logging.trace(f"Step results: {step_log}")
+        logging.trace(f"Step results: {step_log}")
 
         if self.config.wandb.on and not self.config.offline:
             # If we have already completed X steps then we will complete the current wandb run and make a new one.
@@ -1417,7 +1416,7 @@ class Validator:
                 self.run_step_count
                 and self.run_step_count % constants.MAX_RUN_STEPS_PER_WANDB_RUN == 0
             ):
-                bt.logging.trace(
+                logging.trace(
                     f"Validator has completed {self.run_step_count} run steps. Creating a new wandb run."
                 )
                 self.wandb_run.finish()
@@ -1462,7 +1461,7 @@ class Validator:
                     "P90": compute_loss_perf.percentile(90),
                 },
             }
-            bt.logging.trace("Logging to Wandb")
+            logging.trace("Logging to Wandb")
             self.wandb_run.log(
                 {**graphed_data, "original_format_json": original_format_json}
             )
@@ -1506,11 +1505,11 @@ class Validator:
                     if blocks_until_epoch >= self.config.blocks_per_epoch:
                         await self.try_set_weights(block=block, ttl=60)
                     else:
-                        bt.logging.debug(
+                        logging.debug(
                             f"{blocks_until_epoch} / {self.config.blocks_per_epoch} blocks until next epoch."
                         )
             except KeyboardInterrupt:
-                bt.logging.info(
+                logging.info(
                     "KeyboardInterrupt caught, gracefully closing the wandb run..."
                 )
                 if self.wandb_run:
@@ -1518,7 +1517,7 @@ class Validator:
                 exit()
 
             except Exception as e:
-                bt.logging.error(
+                logging.error(
                     f"Error in validator loop \n {e} \n {traceback.format_exc()}"
                 )
 
