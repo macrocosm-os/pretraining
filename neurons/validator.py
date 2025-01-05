@@ -335,7 +335,7 @@ class Validator:
         self.clean_thread.start()
 
         # == Initialize the weight setting thread ==
-        if not self.config.offline:
+        if not self.config.offline and not self.config.dont_set_weights:
             self.weight_thread = threading.Thread(target=self.set_weights, daemon=True)
             self.weight_thread.start()
 
@@ -962,7 +962,7 @@ class Validator:
                     dataset_kwargs=eval_task.dataset_kwargs,
                     seed=seed,
                     sequence_length=competition.constraints.sequence_length,
-                    tokenzier=tokenizer,
+                    tokenizer=tokenizer,
                 )
                 batches = list(data_loader)
                 if batches:
@@ -970,7 +970,7 @@ class Validator:
                     data_loaders.append(data_loader)
 
                     logging.debug(
-                        f"Found {len(batches)} batches of size: {len(batches[0])} for data_loader: {data_loader.name} over pages {dataloader.get_page_names()}"
+                        f"Found {len(batches)} batches of size: {len(batches[0])} for data_loader: {data_loader.name} over pages {data_loader.get_page_names()}"
                     )
 
                     samples.append(batches)
@@ -999,11 +999,13 @@ class Validator:
                             dataset_kwargs=task_14b_star.dataset_kwargs,
                             seed=seed,
                             sequence_length=competition_14b_star.constraints.sequence_length,
-                            tokenzier=tokenizer,
+                            tokenizer=tokenizer,
                         )
                         batches_14_star = list(data_loader_14b_star)
                         if batches_14_star:
                             eval_task_14b_star = task_14b_star
+                            # We overwrite the weight here to 1 as we are handling the weighting by sample ratio later.
+                            eval_task_14b_star.weight = 1
                             data_loaders_14b_star.append(data_loader_14b_star)
 
                             logging.debug(
@@ -1092,7 +1094,6 @@ class Validator:
                                             [eval_task_14b_star],
                                             samples_14b_star,
                                             self.config.device,
-                                            tokenizer.eos_token_id,
                                         ),
                                         ttl=430,
                                         mode="spawn",
@@ -1128,7 +1129,7 @@ class Validator:
                 total_samples = num_fineweb_samples + num_stack_samples
                 fineweb_weighted_score = score * num_fineweb_samples / total_samples
                 stack_weighted_score = (
-                    score_14b_star * num_fineweb_samples / total_samples
+                    score_14b_star * num_stack_samples / total_samples
                 )
 
                 uid_to_state_14b_star[uid_i].score = (
@@ -1241,8 +1242,8 @@ class Validator:
         self.log_step(
             competition.id,
             competition.constraints.epsilon_func,
-            cur_block,
             eval_tasks,
+            cur_block,
             uids,
             uid_to_state,
             self._get_uids_to_competition_ids(),
@@ -1393,14 +1394,14 @@ class Validator:
             curr_block (int): The current block.
             uid_to_state (typing.Dict[int, PerUIDEvalState]): A dictionary mapping uids to their eval state.
         """
-        top_model_loss = uid_to_state[top_uid].avg_loss()
+        top_model_loss = uid_to_state[top_uid].score
         for _, state in uid_to_state.items():
             self.model_tracker.on_model_evaluated(
                 state.hotkey,
                 competition_id,
                 EvalResult(
                     block=curr_block,
-                    score=state.avg_loss(),
+                    score=state.score,
                     winning_model_block=uid_to_state[top_uid].block,
                     winning_model_score=top_model_loss,
                 ),
@@ -1482,7 +1483,7 @@ class Validator:
                 )
 
             # Also log in this older format to avoid breaking the leaderboards.
-            for task_name, score_detail in uid_to_state[uid].score_details().items():
+            for task_name, score_detail in uid_to_state[uid].score_details.items():
                 # Hack to get the 'right' name back here.
                 task_to_dataset_name = {
                     "FALCON": "tiiuae/falcon-refinedweb",
