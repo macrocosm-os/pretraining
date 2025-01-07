@@ -36,6 +36,7 @@ import time
 import traceback
 import typing
 from collections import defaultdict
+from websockets.exceptions import InvalidStatus
 
 import bittensor as bt
 import torch
@@ -572,7 +573,11 @@ class Validator:
                         logging.warning(
                             f"Failed to find metadata for uid {next_uid} with hotkey {hotkey}"
                         )
-
+            except InvalidStatus as e:
+                logging.info(
+                    f"Websocket exception in update loop: {e}. Waiting 3 minutes."
+                )
+                time.sleep(180)
             except (RepositoryNotFoundError, RevisionNotFoundError) as e:
                 logging.trace(e)
             except MinerMisconfiguredError as e:
@@ -759,11 +764,11 @@ class Validator:
                 set_weights_success = False
                 while not set_weights_success:
                     set_weights_success, _ = asyncio.run(self.try_set_weights(ttl=60))
-                    # Wait for 60 seconds before we try to set weights again.
+                    # Wait for 120 seconds before we try to set weights again.
                     if set_weights_success:
                         logging.info("Successfully set weights.")
                     else:
-                        time.sleep(60)
+                        time.sleep(120)
             except Exception as e:
                 logging.error(f"Error in set weights: {e}")
 
