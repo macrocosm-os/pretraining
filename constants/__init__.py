@@ -62,10 +62,9 @@ WEIGHT_SYNC_MINER_MIN_PERCENT = 0.05
 
 # Validator eval batch size.
 BATCH_SIZE = 1
-# Validators number of pages to eval over miners on each step.
-PAGES_PER_EVAL = 22
-# Validators number of pages to eval over miners one ach step for stack v2.
-PAGES_PER_EVAL_STACK_V2_DEDUP = 9
+# Validators number of samples to eval over miners on each step.
+# TODO: Confirm 400 is good and if we should use smaller numbers for multi-dataset competitions.
+SAMPLES_PER_EVAL = 400
 
 # A mapping of block numbers to the supported model types as of that block.
 ALLOWED_MODEL_TYPES_1 = {
@@ -171,7 +170,7 @@ COMPETITION_SCHEDULE_BY_BLOCK: List[Tuple[int, List[Competition]]] = [
                         normalization_id=NormalizationId.NONE,
                         dataset_kwargs={
                             "batch_size": BATCH_SIZE,
-                            "num_pages": PAGES_PER_EVAL,
+                            "num_samples": SAMPLES_PER_EVAL,
                         },
                         weight=1,
                     ),
@@ -189,7 +188,7 @@ COMPETITION_SCHEDULE_BY_BLOCK: List[Tuple[int, List[Competition]]] = [
                         normalization_id=NormalizationId.NONE,
                         dataset_kwargs={
                             "batch_size": BATCH_SIZE,
-                            "num_pages": PAGES_PER_EVAL,
+                            "num_samples": SAMPLES_PER_EVAL,
                         },
                         weight=1,
                     ),
@@ -209,7 +208,7 @@ COMPETITION_SCHEDULE_BY_BLOCK: List[Tuple[int, List[Competition]]] = [
                         normalization_id=NormalizationId.NONE,
                         dataset_kwargs={
                             "batch_size": BATCH_SIZE,
-                            "num_pages": PAGES_PER_EVAL,
+                            "num_samples": SAMPLES_PER_EVAL,
                         },
                         weight=0.85,
                     ),
@@ -220,7 +219,7 @@ COMPETITION_SCHEDULE_BY_BLOCK: List[Tuple[int, List[Competition]]] = [
                         normalization_id=NormalizationId.NONE,
                         dataset_kwargs={
                             "batch_size": BATCH_SIZE,
-                            "num_pages": PAGES_PER_EVAL_STACK_V2_DEDUP,
+                            "num_samples": SAMPLES_PER_EVAL,
                         },
                         weight=0.15,
                     ),

@@ -138,10 +138,10 @@ def get_config():
         help="The number of training accumulation steps.",
     )
     parser.add_argument(
-        "--pages_per_epoch",
+        "--samples_per_epoch",
         type=int,
-        default=10,
-        help="Number of pages trained on per epoch",
+        default=100,
+        help="Number of samples trained on per epoch",
     )
     parser.add_argument(
         "--netuid",
@@ -334,20 +334,16 @@ async def main(config: bt.config):
             # Initialize loss accumulator for the epoch
             epoch_loss = 0.0
 
-            # Prepare the data loader with random pages for each epoch
+            # Prepare the data loader with random samples for each epoch
             logging.info(
-                f"Loading {config.pages_per_epoch} pages for training this epoch"
+                f"Loading {config.samples_per_epoch} samples for training this epoch"
             )
-            random_pages = [
-                random.randint(1, pt.dataset.SubsetFalconLoader.max_pages)
-                for _ in range(config.pages_per_epoch)
-            ]
 
             # Change this loader if you wish to use a different dataset
             loader = pt.dataset.SubsetFineWebEdu2Loader(
                 batch_size=config.bs,
                 sequence_length=config.sl,
-                num_pages=config.pages_per_epoch,
+                num_samples=config.samples_per_epoch,
                 tokenizer=tokenizer,
             )
 
