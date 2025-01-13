@@ -28,9 +28,8 @@ class SubsetLoader(IterableDataset):
         self,
         batch_size=None,
         sequence_length=None,
-        num_pages=None,
+        num_samples=None,
         tokenizer: AutoTokenizer = None,
-        pack_samples: bool = True,
         random_seed: typing.Optional[int] = None,
         config: str = "default",
         split: str = "train",
@@ -38,9 +37,8 @@ class SubsetLoader(IterableDataset):
     ):
         self.batch_size = batch_size
         self.sequence_length = sequence_length
-        self.num_pages = num_pages
+        self.num_samples = num_samples
         self.tokenizer = tokenizer
-        self.pack_samples = pack_samples
         self.config = config
         self.split = split
         self.requires_auth = requires_auth
@@ -53,6 +51,9 @@ class SubsetLoader(IterableDataset):
         self.duplicate_page_threshold = 100
         self.retry_limit = 10
         self.retry_delay = 5
+
+        # List of pages used to fill buffers.
+        self.pages = []
 
         # Buffers
         self.buffer = []
@@ -69,30 +70,28 @@ class SubsetLoader(IterableDataset):
         # Initialize request params
         self.params = self._get_default_params()
 
-        # Fetch pages if specified
-        # If the fetched pages are empty, try again until
-        # we hit the retry limit.
-        fetch_attempt = 1
+        # Fetch pages if specified (individually retrying each page)
+        # If we fail to fill the whole buffer, then try to fill again (without wiping previous data)
+        # If we fail to fill the whole buffer after retry limit fetch attempts we fail overall.
+        fetch_attempt = 0
 
-        if self.num_pages:
-            while fetch_attempt < self.retry_limit:
-                self._initialize_pages()
+        if self.num_samples:
+            while fetch_attempt <= self.retry_limit:
                 fetch_attempt += 1
-
-                # Exit if the buffer has at least one batch
-                if len(self.buffer) >= self.sequence_length:
+                try:
+                    # Try to fill the buffer in one go.
+                    self._fill_buffer()
+                    # Technically it is fine to keep calling _fill_buffer() if it is already done but we break early.
                     break
+                except Exception:
+                    # We already log and swallow the specific exception as part of _fill_buffer() so pass here.
+                    pass
 
-                logging.warning(
-                    f"All fetched pages seem to be empty or have an extremely low token count. "
-                    f"Trying to fetch a new set of pages... (attempt {fetch_attempt}/{self.retry_limit})"
-                )
-
-            # If we exhaust all attempts and still don't have enough data, raise an error
-            if len(self.buffer) < self.sequence_length:
+            # If we hit retry limit and did not finish fetching the required number of samples throw.
+            # TODO: Consider just logging and continuing if we hit ~90% of desired samples or similar.
+            if self._get_loaded_sample_count() < self.num_samples:
                 raise ValueError(
-                    "Maximum retry limit for fetching pages reached. "
-                    "All fetched pages seem to be empty or have an extremely low token count."
+                    f"Maximum retry limit for fetching data reached. Only loaded {self._get_loaded_sample_count()}/{self.num_samples} samples."
                 )
 
     def _get_default_params(self):
@@ -110,23 +109,22 @@ class SubsetLoader(IterableDataset):
             headers["Authorization"] = f"Bearer {self.hf_token}"
         return headers
 
-    def _initialize_pages(self):
-        """Initialize pages based on loader type"""
+    def _get_loaded_sample_count(self):
+        """Checks how many samples worth of data have been loaded into the buffer."""
+        return len(self.buffer) // self.sequence_length
+
+    def _fill_buffer(self):
+        """Fills buffer with data based on loader type."""
+        # Note: This will can overfill the buffer by up to ~1 page worth of content. Consider truncating.
         if hasattr(self, "fetch_dataset_configs"):
             # For FineWebEdu2 style loaders
             self.configs_data = self.fetch_dataset_configs()
-            self._fetch_data_to_buffer(self.num_pages)
+            self._fetch_data_to_buffer(self.num_samples)
         else:
             # For simple page-based loaders
-            pages = self._sample_pages()
-            self.fetch_data_for_pages(pages)
-
-    def fetch_data_for_pages(self, pages):
-        """Set the pages and fetch their data to the buffer."""
-        self.pages = pages
-        self.buffer = []
-        for page in self.pages:
-            self._fetch_data_for_page(page)
+            # Try to get data one page at a time with retries per page.
+            while self._get_loaded_sample_count() < self.num_samples:
+                self._fetch_data_for_page(self._random_page())
 
     def _fetch_data_for_page(self, page):
         """Fetch data for a single page"""
@@ -155,6 +153,9 @@ class SubsetLoader(IterableDataset):
                 )
                 response.raise_for_status()
 
+                # Add this to the list of pages that the buffer was filled from.
+                self.pages.append(page)
+
                 for row in response.json()["rows"]:
                     content = self._get_content_from_row(row)
                     input_ids = self.tokenizer(content, truncation=True)["input_ids"]
@@ -178,9 +179,10 @@ class SubsetLoader(IterableDataset):
         """Extract content from row based on dataset format. Override if needed."""
         return row["row"].get("text", row["row"].get("content"))
 
-    def _sample_pages(self):
-        """Sample random pages. Override for custom sampling logic."""
-        return [random.randint(1, self.max_pages) for _ in range(self.num_pages)]
+    def _random_page(self):
+        """Select a random page. Override for custom sampling logic."""
+        # Note: this does not prevent us from selecting the same page twice.
+        return random.randint(1, self.max_pages)
 
     def get_page_names(self):
         """Get page names in consistent format"""
@@ -194,17 +196,6 @@ class SubsetLoader(IterableDataset):
             ]
         return self.pages
 
-    def _get_pad_size(self, input_ids):
-        """Get padding size for input tokens."""
-        if self.pack_samples:
-            return 1
-
-        sample_size = len(input_ids)
-        remainder = sample_size % self.sequence_length
-        pad_size = self.sequence_length - remainder
-        pad_size = pad_size % self.sequence_length
-        return pad_size
-
     def _refill_padded_buffer(self):
         """Refill the padded buffer from the main buffer."""
         while self.buffer and len(self.padded_buffer) < self.sequence_length:
@@ -214,9 +205,7 @@ class SubsetLoader(IterableDataset):
             self.buffer = self.buffer[EOS_index + 1 :]
             self.used_buffer += input_ids
             self.padded_buffer += input_ids[:-1]
-            self.padded_buffer += [self.tokenizer.eos_token_id] * self._get_pad_size(
-                input_ids=input_ids[:-1]
-            )
+            self.padded_buffer += [self.tokenizer.eos_token_id]
 
     def __iter__(self):
         self.buffer = self.used_buffer + self.buffer
@@ -332,14 +321,13 @@ class SubsetFineWebEdu2Loader(SubsetLoader):
                     logging.error("Maximum retry limit reached. Unable to fetch data.")
                     raise
 
-    def _fetch_data_to_buffer(self, num_pages):
+    def _fetch_data_to_buffer(self, num_samples):
         """Fetch data to buffer with support for multiple configs."""
-        self.pages = []
         attempts = 0
         duplicates = 0
         initial_offset = random.randint(0, self.num_rows_per_page - 1)
 
-        while len(self.pages) < num_pages:
+        while self._get_loaded_sample_count() < num_samples:
             page = self.get_random_pages(num_pages=1, initial_offset=initial_offset)[0]
 
             if page in self.pages:
@@ -375,9 +363,9 @@ class SubsetFineWebEdu2Loader(SubsetLoader):
             except requests.exceptions.RequestException as e:
                 attempts += 1
                 logging.warning(
-                    f"Failed to fetch data, retrying. Attempt {attempts}/{self.retry_limit * num_pages}"
+                    f"Failed to fetch data, retrying. Attempt {attempts}/{self.retry_limit}"
                 )
-                if attempts >= num_pages * self.retry_limit:
+                if attempts >= self.retry_limit:
                     logging.error("Maximum retry limit reached. Unable to fetch data.")
                     raise
 
@@ -394,53 +382,3 @@ class SubsetFineWebEdu2Loader(SubsetLoader):
             split = self.configs_data[config_name]["split"]
             pages.append((config_name, selected_page_start, split))
         return pages
-
-    def fetch_data_to_rows(self, num_pages):
-        """Fetch data and return raw text rows instead of adding to buffer."""
-        downloaded_pages = set()
-        rows = []
-        attempts = 0
-        duplicates = 0
-        initial_offset = random.randint(0, self.num_rows_per_page - 1)
-
-        while len(downloaded_pages) < num_pages:
-            page = self.get_random_pages(num_pages=1, initial_offset=initial_offset)[0]
-
-            if page in downloaded_pages:
-                duplicates += 1
-                if duplicates >= self.duplicate_page_threshold:
-                    logging.debug(
-                        f"Hit duplicate page threshold of {self.duplicate_page_threshold}. "
-                        f"Stopping early at: {len(downloaded_pages)} pages."
-                    )
-                    break
-                continue
-
-            config_name, page_row_start, split = page
-            params = {
-                "dataset": self.name,
-                "config": config_name,
-                "split": split,
-                "offset": page_row_start,
-                "length": self.num_rows_per_page,
-            }
-
-            try:
-                response = requests.get(self.rows_base_url, params=params)
-                response.raise_for_status()
-                downloaded_pages.add(page)
-
-                for row in response.json()["rows"]:
-                    rows.append(row["row"]["text"])
-
-            except requests.exceptions.RequestException as e:
-                attempts += 1
-                logging.warning(
-                    f"Failed to fetch data, retrying with a newly sampled page. "
-                    f"Attempt {attempts}/{self.retry_limit * num_pages}"
-                )
-                if attempts >= num_pages * self.retry_limit:
-                    logging.error("Maximum retry limit reached. Unable to fetch data.")
-                    raise
-
-        return rows
