@@ -251,7 +251,7 @@ class SubsetStackV1DedupLoader(SubsetLoader):
         super().__init__(requires_auth=True, **kwargs)
 
 class SubsetFineMathLoader(SubsetLoader):
-    max_pages: int =
+    max_pages: int = 2_400_000
     name: str = "HuggingFaceTB/finemath"
 
     def __init__(self, **kwargs):
