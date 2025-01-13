@@ -157,7 +157,7 @@ class SubsetLoader(IterableDataset):
 
                 for row in response.json()["rows"]:
                     content = self._get_content_from_row(row)
-                    input_ids = self.tokenizer(content, truncation=True)["input_ids"]
+                    input_ids = self.tokenizer(content, truncation=False)["input_ids"]
                     self.buffer += input_ids
                     self.buffer += [self.tokenizer.eos_token_id]
 
@@ -250,7 +250,21 @@ class SubsetStackV1DedupLoader(SubsetLoader):
     def __init__(self, **kwargs):
         super().__init__(requires_auth=True, **kwargs)
 
+class SubsetFineMathLoader(SubsetLoader):
+    max_pages: int =
+    name: str = "HuggingFaceTB/finemath"
 
+    def __init__(self, **kwargs):
+        super().__init__(config="finemath-3plus", **kwargs)
+
+
+class SubsetStackV1DedupLoader(SubsetLoader):
+    max_pages: int = 236655813
+    name: str = "bigcode/the-stack-dedup"
+
+    def __init__(self, **kwargs):
+        super().__init__(requires_auth=True, **kwargs)
+        
 class SubsetStackV2DedupLoader(SubsetLoader):
     max_pages: int = 5_451_114_734
     name: str = "bigcode/the-stack-v2-dedup"
@@ -368,7 +382,7 @@ class SubsetFineWebEdu2Loader(SubsetLoader):
 
                 for row in response.json()["rows"]:
                     content = row["row"]["text"]
-                    input_ids = self.tokenizer(content, truncation=True)["input_ids"]
+                    input_ids = self.tokenizer(content, truncation=False)["input_ids"]
                     self.buffer += input_ids
                     self.buffer += [self.tokenizer.eos_token_id]
 
