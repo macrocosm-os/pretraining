@@ -74,6 +74,13 @@ from competitions.data import CompetitionId
 from model.retry import should_retry_model
 from neurons import config
 
+from taoverse.model.eval.task import EvalTask
+from pretrain.datasets.factory import DatasetLoaderFactory
+from pretrain.datasets.ids import DatasetId
+from pretrain.dataset import SubsetLoader
+from pretrain.eval.sample import EvalSample
+from pretrain.validation import ScoreDetails
+
 os.environ["TOKENIZERS_PARALLELISM"] = "true"
 
 
@@ -90,27 +97,13 @@ class PerUIDEvalState:
     # The hugging face repo name.
     repo_name: str = "Unknown"
 
-    # The losses per batch per dataset.
-    losses: typing.Dict[str, typing.List[float]] = dataclasses.field(
-        default_factory=lambda: defaultdict(list)
+    # The model's score
+    score: float = math.inf
+
+    # Details about the model's score.
+    score_details: typing.Dict[str, ScoreDetails] = dataclasses.field(
+        default_factory=dict
     )
-
-    def avg_loss(self) -> float:
-        """Safely computes the average loss across all dataset loss lists."""
-        all_losses = [loss for loss_list in self.losses.values() for loss in loss_list]
-        return sum(all_losses) / len(all_losses) if all_losses else math.inf
-
-    def avg_dataset_loss(self, dataset_name: str) -> float:
-        """Safely computes the average loss from a list of losses for a specific dataset."""
-        return (
-            sum(self.losses[dataset_name]) / len(self.losses[dataset_name])
-            if self.losses[dataset_name]
-            else math.inf
-        )
-
-    def avg_loss_per_dataset(self) -> typing.Dict[str, float]:
-        """Safely computes the average loss per dataset."""
-        return {k: (sum(v) / len(v) if v else math.inf) for k, v in self.losses.items()}
 
 
 class Validator:
@@ -343,7 +336,7 @@ class Validator:
         self.clean_thread.start()
 
         # == Initialize the weight setting thread ==
-        if not self.config.offline:
+        if not self.config.offline and not self.config.dont_set_weights:
             self.weight_thread = threading.Thread(target=self.set_weights, daemon=True)
             self.weight_thread.start()
 
@@ -546,7 +539,7 @@ class Validator:
                 except MinerMisconfiguredError as e:
                     self.model_tracker.on_model_evaluated(
                         hotkey,
-                        0,
+                        0,  # Technically this is B7 but that is unused.
                         EvalResult(
                             block=curr_block,
                             score=math.inf,
@@ -649,7 +642,7 @@ class Validator:
                     except MinerMisconfiguredError as e:
                         self.model_tracker.on_model_evaluated(
                             hotkey,
-                            0,
+                            0,  # Technically this is B7 but that is unused.
                             EvalResult(
                                 block=curr_block,
                                 score=math.inf,
@@ -844,6 +837,21 @@ class Validator:
             self.miner_iterator.set_miner_uids(self.metagraph.uids.tolist())
             self.model_tracker.on_hotkeys_updated(set(self.metagraph.hotkeys))
 
+    def _get_seed(self):
+        # Synchronize the random seed used by validators.
+        try:
+
+            @retry(tries=3, delay=1, backoff=2)
+            def _get_seed_with_retry():
+                return metagraph_utils.get_hash_of_sync_block(
+                    self.subtensor, constants.SYNC_BLOCK_CADENCE
+                )
+
+            return _get_seed_with_retry()
+        except:
+            logging.trace(f"Failed to get hash of sync block. Using fallback seed.")
+            return None
+
     async def try_run_step(self, ttl: int):
         """Runs a step with ttl in a background process, without raising exceptions if it times out."""
 
@@ -931,93 +939,89 @@ class Validator:
 
         logging.trace(f"Current block: {cur_block}")
 
-        if cur_block < constants.BLOCK_STACK_V2_DEDUP:
-            dataset_by_competition_id = constants.DATASET_BY_COMPETITION_ID
-        else:
-            dataset_by_competition_id = constants.DATASET_BY_COMPETITION_ID_2
-
-        # Get the dataloader for this competition
-        SubsetDataLoader = dataset_by_competition_id[competition.id]
-
-        logging.trace(f"Dataset in use: {SubsetDataLoader.name}.")
-
         if running_14b_star:
             # This will be set to a copy of 14b later with the additional eval losses appended.
             uid_to_state_14b_star = defaultdict(PerUIDEvalState)
-
-            # Also get the dataloader for 14b_star.
-            SubsetDataLoader_14b_star = dataset_by_competition_id[
-                CompetitionId.B14_MODEL_MULTI_DATASET
-            ]
-            logging.trace(
-                f"Additionally using 14b* dataset: {SubsetDataLoader_14b_star.name}."
-            )
 
         # Get the tokenizer
         tokenizer = pt.model.load_tokenizer(
             competition.constraints, cache_dir=self.config.model_dir
         )
 
-        # Use sample packing.
-        pack_samples = True
-        pages_per_eval = constants.pages_per_eval_pack
+        # Pull the latest sample data based on the competition.
+        load_data_perf = PerfMonitor("Eval: Load data")
 
         # Try to synchronize the data used by validators.
-        try:
-            seed = metagraph_utils.get_hash_of_sync_block(
-                self.subtensor, constants.SYNC_BLOCK_CADENCE
-            )
-        except:
-            seed = None
+        seed = self._get_seed()
+        eval_tasks: typing.List[EvalTask] = []
+        data_loaders: typing.List[SubsetLoader] = []
+        samples: typing.List[typing.List[EvalSample]] = []
 
-        logging.debug(f"Number of pages per evaluation step is: {pages_per_eval}.")
         logging.debug(f"Seed used for loading data is: {seed}.")
 
-        dataloader = SubsetDataLoader(
-            batch_size=constants.batch_size,
-            sequence_length=competition.constraints.sequence_length,
-            num_pages=pages_per_eval,
-            tokenizer=tokenizer,
-            pack_samples=pack_samples,
-            random_seed=seed,
-        )
+        # Load data based on the competition.
+        with load_data_perf.sample():
+            for eval_task in competition.eval_tasks:
+                data_loader = DatasetLoaderFactory.get_loader(
+                    dataset_id=eval_task.dataset_id,
+                    dataset_kwargs=eval_task.dataset_kwargs,
+                    seed=seed,
+                    sequence_length=competition.constraints.sequence_length,
+                    tokenizer=tokenizer,
+                )
+                batches = list(data_loader)
+                if batches:
+                    eval_tasks.append(eval_task)
+                    data_loaders.append(data_loader)
 
-        batches = list(dataloader)
-        logging.debug(f"Number of validation batches is {len(batches)}")
-        logging.debug(f"Batch size is {len(batches[0])}")
+                    logging.debug(
+                        f"Found {len(batches)} batches of size: {len(batches[0])} for data_loader: {data_loader.name} over pages {data_loader.get_page_names()}"
+                    )
 
-        # This is useful for logging to wandb
-        pages = dataloader.get_page_names()
+                    samples.append(batches)
+                else:
+                    raise ValueError(
+                        f"Did not find any data for data loader: {data_loader.name}"
+                    )
 
         logging.debug(f"Competition {competition.id} | Computing losses on {uids}")
-        logging.debug(f"Pages used are {pages}")
 
         if running_14b_star:
+            # Pull the latest sample data based on the competition.
+            load_data_perf_14b_star = PerfMonitor("Eval: Load data 14b star")
 
-            if cur_block < constants.BLOCK_STACK_V2_DEDUP:
-                num_pages_code_dataset = constants.pages_per_eval_stack_v1_dedup
-            else:
-                num_pages_code_dataset = constants.pages_per_eval_stack_v2_dedup
+            # This is a temporary hack until 14b star is itself a full competition.
+            eval_task_14b_star: EvalTask = None
+            data_loaders_14b_star: typing.List[SubsetLoader] = []
+            samples_14b_star: typing.List[typing.List[EvalSample]] = []
 
-            dataloader_14b_star = SubsetDataLoader_14b_star(
-                batch_size=constants.batch_size,
-                sequence_length=competition_14b_star.constraints.sequence_length,
-                num_pages=num_pages_code_dataset,
-                tokenizer=tokenizer,
-                pack_samples=pack_samples,
-                random_seed=seed,
-            )
+            with load_data_perf_14b_star.sample():
+                # We only want the stack v2 here.
+                for task_14b_star in competition_14b_star.eval_tasks:
+                    if task_14b_star.name == "STACKV2":
+                        data_loader_14b_star = DatasetLoaderFactory.get_loader(
+                            dataset_id=task_14b_star.dataset_id,
+                            dataset_kwargs=task_14b_star.dataset_kwargs,
+                            seed=seed,
+                            sequence_length=competition_14b_star.constraints.sequence_length,
+                            tokenizer=tokenizer,
+                        )
+                        batches_14_star = list(data_loader_14b_star)
+                        if batches_14_star:
+                            eval_task_14b_star = task_14b_star
+                            # We overwrite the weight here to 1 as we are handling the weighting by sample ratio later.
+                            eval_task_14b_star.weight = 1
+                            data_loaders_14b_star.append(data_loader_14b_star)
 
-            batches_14b_star = list(dataloader_14b_star)
-            logging.debug(
-                f"Number of 14b* validation batches is {len(batches_14b_star)}"
-            )
-            logging.debug(f"14b* Batch size is {len(batches_14b_star[0])}")
+                            logging.debug(
+                                f"For 14b*: found {len(batches_14_star)} batches of size: {len(batches_14_star[0])} for data_loader: {data_loader_14b_star.name} over pages {data_loader_14b_star.get_page_names()}"
+                            )
 
-            # This is useful for logging to wandb
-            pages_14b_star = dataloader_14b_star.get_page_names()
-
-            logging.debug(f"14b* Pages used are {pages_14b_star}")
+                            samples_14b_star.append(batches_14_star)
+                        else:
+                            raise ValueError(
+                                f"For 14b*: did not find any data for data loader: {data_loader_14b_star.name}"
+                            )
 
             compute_loss_perf_14b_star = PerfMonitor("Eval: Compute loss 14b star")
 
@@ -1029,12 +1033,11 @@ class Validator:
         compute_loss_perf = PerfMonitor("Eval: Compute loss")
 
         for uid_i in uids:
-            # This variable should be overwritten below if the model has metadata.
-            losses: typing.List[float] = [math.inf for _ in range(len(batches))]
+            score: float = math.inf
+            score_details = {task.name: ScoreDetails() for task in eval_tasks}
             if running_14b_star:
-                losses_14b_star: typing.List[float] = [
-                    math.inf for _ in range(len(batches_14b_star))
-                ]
+                score_14b_star: float = math.inf
+                score_details_14b_star = {eval_task_14b_star.name: ScoreDetails()}
 
             logging.trace(f"Getting metadata for uid: {uid_i}.")
 
@@ -1069,17 +1072,18 @@ class Validator:
                         model_i = self.local_store.retrieve_model(
                             hotkey, model_i_metadata.id, kwargs
                         )
+                    # Currently all competitions define a default tokenizer, so we set it here.
+                    model_i.tokenizer = tokenizer
 
                     with compute_loss_perf.sample():
                         # Run each computation in a subprocess so that the GPU is reset between each model.
-                        losses = utils.run_in_subprocess(
+                        score, score_details = utils.run_in_subprocess(
                             functools.partial(
-                                pt.validation.compute_losses,
-                                model_i.pt_model,
-                                batches,
+                                pt.validation.score_model,
+                                model_i,
+                                eval_tasks,
+                                samples,
                                 self.config.device,
-                                tokenizer.eos_token_id,
-                                pack_samples,
                             ),
                             ttl=430,
                             mode="spawn",
@@ -1087,46 +1091,72 @@ class Validator:
                     if running_14b_star:
                         with compute_loss_perf_14b_star.sample():
                             try:
-                                losses_14b_star = utils.run_in_subprocess(
-                                    functools.partial(
-                                        pt.validation.compute_losses,
-                                        model_i.pt_model,
-                                        batches_14b_star,
-                                        self.config.device,
-                                        tokenizer.eos_token_id,
-                                        pack_samples,
-                                    ),
-                                    ttl=430,
-                                    mode="spawn",
+                                score_14b_star, score_details_14b_star = (
+                                    utils.run_in_subprocess(
+                                        functools.partial(
+                                            pt.validation.score_model,
+                                            model_i,
+                                            [eval_task_14b_star],
+                                            samples_14b_star,
+                                            self.config.device,
+                                        ),
+                                        ttl=430,
+                                        mode="spawn",
+                                    )
                                 )
-                            except Exception as e:
+                            except Exception:
                                 logging.error(
-                                    f"Error in eval loop: {e}. Setting 14b* losses for uid: {uid_i} to infinity."
+                                    f"Error in eval loop: {traceback.format_exc()}. Setting 14b* score for uid: {uid_i} to infinity."
                                 )
                     del model_i
 
-                except Exception as e:
+                except Exception:
                     logging.error(
-                        f"Error in eval loop: {e}. Setting losses for uid: {uid_i} to infinity."
+                        f"Error in eval loop: {traceback.format_exc()}. Setting score for uid: {uid_i} to infinity."
                     )
             else:
                 logging.debug(
                     f"Unable to load the model for {uid_i} or it belongs to another competition. Setting loss to inifinity for this competition."
                 )
 
-            uid_to_state[uid_i].losses[SubsetDataLoader.name] = losses
-            logging.trace(
-                f"Computed model losses for uid:{uid_i} with average loss: {uid_to_state[uid_i].avg_loss()}"
+            uid_to_state[uid_i].score = score
+            uid_to_state[uid_i].score_details = score_details
+            logging.info(
+                f"Computed model score for uid: {uid_i} with score: {score}. Details: {score_details}"
             )
 
             if running_14b_star:
-                # Make a deep copy of the current uid_to_state and append the additional losses.
+                # Make a deep copy of the current uid_to_state, average out the scores, and append new details.
                 uid_to_state_14b_star[uid_i] = copy.deepcopy(uid_to_state[uid_i])
-                uid_to_state_14b_star[uid_i].losses[
-                    SubsetDataLoader_14b_star.name
-                ] = losses_14b_star
-                logging.trace(
-                    f"Computed 14b* model losses for uid:{uid_i} with average loss: {uid_to_state_14b_star[uid_i].avg_loss()}. Details: {uid_to_state_14b_star[uid_i].avg_loss_per_dataset()}"
+                # For scores we know there are only two tasks, so we weight it by the additional 14b task.
+                num_fineweb_samples = score_details["FINEWEB"].num_samples
+                num_stack_samples = score_details_14b_star["STACKV2"].num_samples
+                total_samples = num_fineweb_samples + num_stack_samples
+                fineweb_weighted_score = score * num_fineweb_samples / total_samples
+                stack_weighted_score = (
+                    score_14b_star * num_stack_samples / total_samples
+                )
+
+                uid_to_state_14b_star[uid_i].score = (
+                    fineweb_weighted_score + stack_weighted_score
+                )
+
+                # We also need to adjust the weighted score details as each thinks it was 100%.
+                # 14B only runs FINEWEB so we can just adjust this one score details.
+                uid_to_state_14b_star[uid_i].score_details[
+                    "FINEWEB"
+                ].weighted_norm_score = fineweb_weighted_score
+                # Likewise we know 14B* only adds Stack V2
+                score_details_14b_star["STACKV2"].weighted_norm_score = (
+                    stack_weighted_score
+                )
+                # And copy over into the new score details dictionary.
+                uid_to_state_14b_star[uid_i].score_details["STACKV2"] = (
+                    score_details_14b_star["STACKV2"]
+                )
+
+                logging.info(
+                    f"Computed 14b* model score for uid: {uid_i} with score: {uid_to_state_14b_star[uid_i].score}. Details: {uid_to_state_14b_star[uid_i].score_details}"
                 )
 
         # Calculate new wins and win_rate with only the competitive uids considered.
@@ -1192,13 +1222,11 @@ class Validator:
         )
 
         # Note when breaking ties of 0 weight models we use the primary dataset in all cases.
-        uid_to_average_loss = {
-            uid: state.avg_loss() for uid, state in uid_to_state.items()
-        }
+        uid_to_average_score = {uid: state.score for uid, state in uid_to_state.items()}
 
         # Make sure we always keep around sample_min number of models to maintain previous behavior.
         if len(models_to_keep) < self.config.sample_min:
-            for uid in sorted(uid_to_average_loss, key=uid_to_average_loss.get):
+            for uid in sorted(uid_to_average_score, key=uid_to_average_score.get):
                 if len(models_to_keep) >= self.config.sample_min:
                     break
                 models_to_keep.add(uid)
@@ -1211,6 +1239,7 @@ class Validator:
         self.save_state()
 
         # Log the performance of the eval loop.
+        logging.debug(load_data_perf.summary_str())
         logging.debug(load_model_perf.summary_str())
         logging.debug(compute_loss_perf.summary_str())
 
@@ -1218,18 +1247,22 @@ class Validator:
         self.log_step(
             competition.id,
             competition.constraints.epsilon_func,
+            eval_tasks,
             cur_block,
             uids,
             uid_to_state,
             self._get_uids_to_competition_ids(),
-            pages,
+            seed,
+            data_loaders,
             wins,
             win_rate,
             load_model_perf,
             compute_loss_perf,
+            load_data_perf,
         )
 
         if running_14b_star:
+            logging.debug(load_data_perf_14b_star.summary_str())
             logging.debug(compute_loss_perf_14b_star.summary_str())
 
             uids_to_competition_ids_14b_star = {
@@ -1244,15 +1277,18 @@ class Validator:
             self.log_step(
                 CompetitionId.B14_MODEL_MULTI_DATASET,
                 competition.constraints.epsilon_func,
+                [eval_task_14b_star],
                 cur_block,
                 uids,
                 uid_to_state_14b_star,
                 uids_to_competition_ids_14b_star,
-                pages_14b_star,
+                seed,
+                data_loaders + data_loaders_14b_star,
                 wins_14b_star,
                 win_rate_14b_star,
                 load_model_perf,
                 compute_loss_perf_14b_star,
+                load_data_perf_14b_star,
             )
 
     def _compute_and_set_competition_weights(
@@ -1273,27 +1309,25 @@ class Validator:
         Returns:
             tuple: A tuple containing two dictionaries, one for wins and one for win rates.
         """
-        uid_to_average_loss = {
-            uid: state.avg_loss() for uid, state in uid_to_state.items()
-        }
+        uid_to_score = {uid: state.score for uid, state in uid_to_state.items()}
         uid_to_block = {uid: state.block for uid, state in uid_to_state.items()}
 
         # Filter to the list of uids that may at one point be a top model.
         competitive_uids = pt.validation.compute_competitive_uids(
-            uid_to_average_loss, uid_to_block, competition.constraints.epsilon_func
+            uid_to_score, uid_to_block, competition.constraints.epsilon_func
         )
 
         # Log which models got dropped for the second pass.
         dropped_uids = [uid for uid in uids if uid not in competitive_uids]
         if dropped_uids:
             logging.info(
-                f"The following uids were not included in the win rate calculation because they did not beat the fully decayed loss of any previously submitted model in this eval batch: {dropped_uids}."
+                f"The following uids were not included in the win rate calculation because they did not beat the fully decayed score of any previously submitted model in this eval batch: {dropped_uids}."
             )
 
         # Calculate new wins and win_rate with only the competitive uids considered.
         wins, win_rate = pt.validation.compute_wins(
             competitive_uids,
-            uid_to_average_loss,
+            uid_to_score,
             uid_to_block,
             competition.constraints.epsilon_func,
             cur_block,
@@ -1365,14 +1399,14 @@ class Validator:
             curr_block (int): The current block.
             uid_to_state (typing.Dict[int, PerUIDEvalState]): A dictionary mapping uids to their eval state.
         """
-        top_model_loss = uid_to_state[top_uid].avg_loss()
+        top_model_loss = uid_to_state[top_uid].score
         for _, state in uid_to_state.items():
             self.model_tracker.on_model_evaluated(
                 state.hotkey,
                 competition_id,
                 EvalResult(
                     block=curr_block,
-                    score=state.avg_loss(),
+                    score=state.score,
                     winning_model_block=uid_to_state[top_uid].block,
                     winning_model_score=top_model_loss,
                 ),
@@ -1382,21 +1416,31 @@ class Validator:
         self,
         competition_id: CompetitionId,
         competition_epsilon_func: EpsilonFunc,
+        eval_tasks: typing.List[EvalTask],
         current_block: int,
         uids: typing.List[int],
         uid_to_state: typing.Dict[int, PerUIDEvalState],
         uid_to_competition_id: typing.Dict[int, typing.Optional[int]],
-        pages: typing.List[str],
+        seed: int,
+        data_loaders: typing.List[SubsetLoader],
         wins: typing.Dict[int, int],
         win_rate: typing.Dict[int, float],
         load_model_perf: PerfMonitor,
         compute_loss_perf: PerfMonitor,
+        load_data_perf: PerfMonitor,
     ):
         """Logs the results of the step to the console and wandb (if enabled)."""
+        # Get pages from each data loader
+        pages = []
+        for loader in data_loaders:
+            for page_name in loader.get_page_names():
+                pages.append(f"{loader.name}:{page_name}")
+
         # Build step log
         step_log = {
             "timestamp": time.time(),
             "competition_id": competition_id,
+            "seed": seed,
             "pages": pages,
             "uids": uids,
             "uid_data": {},
@@ -1418,7 +1462,9 @@ class Validator:
                 "block": uid_to_state[uid].block,
                 "hf": uid_to_state[uid].repo_name,
                 "competition_id": int(competition_id),
-                "average_loss": uid_to_state[uid].avg_loss(),
+                "average_loss": uid_to_state[
+                    uid
+                ].score,  # Keep the log here as loss to avoid breaking the leaderboard.
                 "epsilon_adv": competition_epsilon_func.compute_epsilon(
                     current_block, uid_to_state[uid].block
                 ),
@@ -1430,13 +1476,34 @@ class Validator:
                 "dataset_perf": {},
             }
 
-            # Log performance per dataset
-            for dataset_name, avg_loss in (
-                uid_to_state[uid].avg_loss_per_dataset().items()
-            ):
-                step_log["uid_data"][str(uid)]["dataset_perf"][f"{dataset_name}"] = {
-                    "average_loss": avg_loss
+            for task in eval_tasks:
+                step_log["uid_data"][str(uid)][f"{task.name}.raw_score"] = (
+                    uid_to_state[uid].score_details[task.name].raw_score
+                )
+                step_log["uid_data"][str(uid)][f"{task.name}.norm_score"] = (
+                    uid_to_state[uid].score_details[task.name].norm_score
+                )
+                step_log["uid_data"][str(uid)][f"{task.name}.weighted_norm_score"] = (
+                    uid_to_state[uid].score_details[task.name].weighted_norm_score
+                )
+
+            # Also log in this older format to avoid breaking the leaderboards.
+            for task_name, score_detail in uid_to_state[uid].score_details.items():
+                # Hack to get the 'right' name back here.
+                task_to_dataset_name = {
+                    "FALCON": "tiiuae/falcon-refinedweb",
+                    "FINEWEB": "HuggingFaceFW/fineweb-edu-score-2",
+                    "STACKV2": "bigcode/the-stack-v2-dedup",
                 }
+                dataset_name = (
+                    task_to_dataset_name[task_name]
+                    if task_name in task_to_dataset_name
+                    else "DatasetNameNotFound"
+                )
+                step_log["uid_data"][str(uid)]["dataset_perf"][f"{dataset_name}"] = {
+                    "average_loss": score_detail.raw_score
+                }
+
         table = Table(title="Step", expand=True)
         table.add_column("uid", justify="right", style="cyan", no_wrap=True)
         table.add_column("hf", style="magenta", overflow="fold")
@@ -1535,7 +1602,27 @@ class Validator:
                     "max": compute_loss_perf.max(),
                     "P90": compute_loss_perf.percentile(90),
                 },
+                "load_data_perf": {
+                    "min": load_data_perf.min(),
+                    "median": load_data_perf.median(),
+                    "max": load_data_perf.max(),
+                    "P90": load_data_perf.percentile(90),
+                },
             }
+            # Add the score details to the graphed data.
+            for task in eval_tasks:
+                graphed_data[f"{task.name}.raw_score"] = {
+                    str(uid): uid_data[str(uid)][f"{task.name}.raw_score"]
+                    for uid in uids
+                }
+                graphed_data[f"{task.name}.norm_score"] = {
+                    str(uid): uid_data[str(uid)][f"{task.name}.norm_score"]
+                    for uid in uids
+                }
+                graphed_data[f"{task.name}.weighted_norm_score"] = {
+                    str(uid): uid_data[str(uid)][f"{task.name}.weighted_norm_score"]
+                    for uid in uids
+                }
             logging.trace("Logging to Wandb")
             self.wandb_run.log(
                 {**graphed_data, "original_format_json": original_format_json}

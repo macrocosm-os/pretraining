@@ -1,33 +1,31 @@
-import math
 import datetime as dt
+import math
 from pathlib import Path
+from typing import Dict, List, Tuple
 
 import torch
-import pretrain as pt
-
+from taoverse.model.competition.data import Competition, ModelConstraints
+from taoverse.model.competition.epsilon import LinearDecay
+from taoverse.model.eval.normalization import NormalizationId
+from taoverse.model.eval.task import EvalTask
 from transformers import (
-    GPT2LMHeadModel,
-    MistralForCausalLM,
-    LlamaForCausalLM,
     BartForCausalLM,
     FalconForCausalLM,
-    GPTNeoXForCausalLM,
-    GPTJForCausalLM,
-    PhiForCausalLM,
-    GemmaForCausalLM,
     Gemma2ForCausalLM,
+    GemmaForCausalLM,
+    GPT2LMHeadModel,
+    GPTJForCausalLM,
+    GPTNeoXForCausalLM,
+    LlamaForCausalLM,
+    MistralForCausalLM,
+    PhiForCausalLM,
     Qwen2ForCausalLM,
 )
 
-from taoverse.model.competition.data import (
-    Competition,
-    ModelConstraints,
-    NormValidationConstraints,
-)
-from taoverse.model.competition.epsilon import FixedEpsilon, LinearDecay
+import pretrain as pt
 from competitions.data import CompetitionId
-
-from typing import Dict, List, Tuple
+from pretrain.datasets.ids import DatasetId
+from pretrain.eval.method import EvalMethodId
 
 # ---------------------------------
 # Project Constants.
@@ -58,13 +56,16 @@ ROOT_DIR = Path(__file__).parent.parent
 # This corresponded to top-10 validator on july 31st, 2024
 WEIGHT_SYNC_VALI_MIN_STAKE = 200_000
 
-
-# Activation block for using The Stack V2 Dedup
-BLOCK_STACK_V2_DEDUP = 4_453_709
-
 # Minimum percent of weight on a vali for a miner to be considered a top miner.
 # Since there can be multiple competitions at different reward percentages we can't just check biggest.
 WEIGHT_SYNC_MINER_MIN_PERCENT = 0.05
+
+# Validator eval batch size.
+BATCH_SIZE = 1
+# Validators number of pages to eval over miners on each step.
+PAGES_PER_EVAL = 22
+# Validators number of pages to eval over miners one ach step for stack v2.
+PAGES_PER_EVAL_STACK_V2_DEDUP = 9
 
 # A mapping of block numbers to the supported model types as of that block.
 ALLOWED_MODEL_TYPES_1 = {
@@ -89,19 +90,8 @@ ALLOWED_MODEL_TYPES_2 = {
     Qwen2ForCausalLM,
 }
 
-# Defined dataset by competition id
 DATASET_BY_COMPETITION_ID: Dict[CompetitionId, str] = {
     CompetitionId.B3_MODEL: pt.dataset.SubsetFalconLoader,
-    CompetitionId.B7_MODEL: pt.dataset.SubsetFineWebEdu2Loader,
-    CompetitionId.B14_MODEL: pt.dataset.SubsetFineWebEdu2Loader,
-    # B14 model multi dataset adds the following dataset to the baseline b14 competition.
-    CompetitionId.B14_MODEL_MULTI_DATASET: pt.dataset.SubsetStackV1DedupLoader,
-}
-
-# This is to be used at block for the Stack V2
-DATASET_BY_COMPETITION_ID_2: Dict[CompetitionId, str] = {
-    CompetitionId.B3_MODEL: pt.dataset.SubsetFalconLoader,
-    CompetitionId.B7_MODEL: pt.dataset.SubsetFineWebEdu2Loader,
     CompetitionId.B14_MODEL: pt.dataset.SubsetFineWebEdu2Loader,
     # B14 model multi dataset adds the following dataset to the baseline b14 competition.
     CompetitionId.B14_MODEL_MULTI_DATASET: pt.dataset.SubsetStackV2DedupLoader,
@@ -112,39 +102,7 @@ SYNC_BLOCK_CADENCE = 150
 # Delay at least as long as the sync block cadence with an additional buffer.
 EVAL_BLOCK_DELAY = SYNC_BLOCK_CADENCE + 100
 
-# Defined model constraints by competition id with decaying epsilon
 MODEL_CONSTRAINTS_BY_COMPETITION_ID: Dict[CompetitionId, ModelConstraints] = {
-    CompetitionId.B3_MODEL: ModelConstraints(
-        max_model_parameter_size=3_400_000_000,
-        min_model_parameter_size=3_200_000_000,
-        sequence_length=4096,
-        allowed_architectures=ALLOWED_MODEL_TYPES_2,
-        tokenizer="Xenova/gpt-4",
-        kwargs={
-            "torch_dtype": torch.bfloat16,
-            "attn_implementation": "flash_attention_2",
-        },
-        eval_block_delay=EVAL_BLOCK_DELAY,
-        epsilon_func=LinearDecay(0.005, 0.0005, 50400),
-        max_bytes=15 * 1024 * 1024 * 1024,
-    ),
-    CompetitionId.B14_MODEL: ModelConstraints(
-        max_model_parameter_size=13_900_000_000,
-        min_model_parameter_size=13_700_000_000,
-        sequence_length=4096,
-        allowed_architectures=ALLOWED_MODEL_TYPES_2,
-        tokenizer="Xenova/gpt-4",
-        kwargs={
-            "torch_dtype": torch.bfloat16,
-            "attn_implementation": "flash_attention_2",
-        },
-        eval_block_delay=EVAL_BLOCK_DELAY,
-        epsilon_func=LinearDecay(0.005, 0.0005, 50400),
-        max_bytes=29 * 1024 * 1024 * 1024,
-    ),
-}
-
-MODEL_CONSTRAINTS_BY_COMPETITION_ID_2: Dict[CompetitionId, ModelConstraints] = {
     CompetitionId.B3_MODEL: ModelConstraints(
         max_model_parameter_size=3_400_000_000,
         min_model_parameter_size=3_200_000_000,
@@ -204,37 +162,69 @@ COMPETITION_SCHEDULE_BY_BLOCK: List[Tuple[int, List[Competition]]] = [
             Competition(
                 CompetitionId.B3_MODEL,
                 MODEL_CONSTRAINTS_BY_COMPETITION_ID[CompetitionId.B3_MODEL],
-                0.29,
-            ),
-            Competition(
-                CompetitionId.B14_MODEL,
-                MODEL_CONSTRAINTS_BY_COMPETITION_ID[CompetitionId.B14_MODEL],
-                0.57,
-            ),
-            Competition(
-                CompetitionId.B14_MODEL_MULTI_DATASET,
-                MODEL_CONSTRAINTS_BY_COMPETITION_ID[CompetitionId.B14_MODEL],
-                0.14,
-            ),
-        ],
-    ),
-    (
-        BLOCK_STACK_V2_DEDUP,
-        [
-            Competition(
-                CompetitionId.B3_MODEL,
-                MODEL_CONSTRAINTS_BY_COMPETITION_ID_2[CompetitionId.B3_MODEL],
                 0.2,
+                eval_tasks=[
+                    EvalTask(
+                        name="FALCON",
+                        method_id=EvalMethodId.TEXT_LOSS,
+                        dataset_id=DatasetId.FALCON,
+                        normalization_id=NormalizationId.NONE,
+                        dataset_kwargs={
+                            "batch_size": BATCH_SIZE,
+                            "num_pages": PAGES_PER_EVAL,
+                        },
+                        weight=1,
+                    ),
+                ],
             ),
             Competition(
                 CompetitionId.B14_MODEL,
-                MODEL_CONSTRAINTS_BY_COMPETITION_ID_2[CompetitionId.B14_MODEL],
+                MODEL_CONSTRAINTS_BY_COMPETITION_ID[CompetitionId.B14_MODEL],
                 0.4,
+                eval_tasks=[
+                    EvalTask(
+                        name="FINEWEB",
+                        method_id=EvalMethodId.TEXT_LOSS,
+                        dataset_id=DatasetId.FINEWEB,
+                        normalization_id=NormalizationId.NONE,
+                        dataset_kwargs={
+                            "batch_size": BATCH_SIZE,
+                            "num_pages": PAGES_PER_EVAL,
+                        },
+                        weight=1,
+                    ),
+                ],
             ),
+            # This competition is currently being run as part of B14.
+            # In a future block this eval task definition will become the new B14 competition eval.
             Competition(
                 CompetitionId.B14_MODEL_MULTI_DATASET,
-                MODEL_CONSTRAINTS_BY_COMPETITION_ID_2[CompetitionId.B14_MODEL],
+                MODEL_CONSTRAINTS_BY_COMPETITION_ID[CompetitionId.B14_MODEL],
                 0.4,
+                eval_tasks=[
+                    EvalTask(
+                        name="FINEWEB",
+                        method_id=EvalMethodId.TEXT_LOSS,
+                        dataset_id=DatasetId.FINEWEB,
+                        normalization_id=NormalizationId.NONE,
+                        dataset_kwargs={
+                            "batch_size": BATCH_SIZE,
+                            "num_pages": PAGES_PER_EVAL,
+                        },
+                        weight=0.85,
+                    ),
+                    EvalTask(
+                        name="STACKV2",
+                        method_id=EvalMethodId.TEXT_LOSS,
+                        dataset_id=DatasetId.STACK2,
+                        normalization_id=NormalizationId.NONE,
+                        dataset_kwargs={
+                            "batch_size": BATCH_SIZE,
+                            "num_pages": PAGES_PER_EVAL_STACK_V2_DEDUP,
+                        },
+                        weight=0.15,
+                    ),
+                ],
             ),
         ],
     ),
@@ -245,6 +235,11 @@ for block_and_competitions in COMPETITION_SCHEDULE_BY_BLOCK:
         sum(competition.reward_percentage for competition in block_and_competitions[1]),
         1.0,
     )
+    for comp in block_and_competitions[1]:
+        assert math.isclose(
+            sum(task.weight for task in comp.eval_tasks),
+            1.0,
+        )
 
 
 # The number of run steps to log to single wandb run.
@@ -261,23 +256,11 @@ alpha = 0.5
 # validator scoring exponential temperature
 # 0.01 gives ~96% to best model with only ~3 receiving any weights.
 temperature = 0.01
-
-# validators number of pages to eval over miners on each step.
-pages_per_eval_unpack = 10  # With sample unpacking
-pages_per_eval_pack = 22
-
-# In a future release we will update the loaders to be able to load a certain number of tokens rather than pages.
-# Until then we need to set this manually
-pages_per_eval_stack_v1_dedup = 1
-pages_per_eval_stack_v2_dedup = 9
-
-# validator eval batch size.
-batch_size = 1
 # validator eval batch min to keep for next loop.
 sample_min = 5
 # Max number of uids that can be either pending eval or currently being evaluated.
 # We allow the sample_min per competition + 10 additional models to be held at any one time.
-updated_models_limit = sample_min * len(MODEL_CONSTRAINTS_BY_COMPETITION_ID_2) + 10
+updated_models_limit = sample_min * len(MODEL_CONSTRAINTS_BY_COMPETITION_ID) + 10
 # time required between updates to the chain.
 chain_update_cadence = dt.timedelta(minutes=20)
 # Number of blocks required between retrying evaluation of a model.

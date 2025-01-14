@@ -18,15 +18,19 @@
 
 # Tools for performing validation over models.
 
+import dataclasses
 import math
-import traceback
 import typing
 
-import bittensor as bt
-import numpy as np
+import taoverse.utilities.logging as logging
 import torch
 from taoverse.model.competition.epsilon import EpsilonFunc
-from taoverse.utilities import logging
+from taoverse.model.data import Model
+from taoverse.model.eval.normalization import normalize_score
+from taoverse.model.eval.task import EvalTask
+
+from pretrain.eval.method import EvalMethodId, compute_text_loss
+from pretrain.eval.sample import EvalSample
 
 
 def iswin(
@@ -67,7 +71,7 @@ def iswin(
 
 def compute_wins(
     uids: typing.List[int],
-    uid_to_average_loss: typing.Dict[int, float],
+    uid_to_score: typing.Dict[int, float],
     uid_to_block: typing.Dict[int, int],
     epsilon_func: EpsilonFunc,
     current_block: int,
@@ -77,7 +81,7 @@ def compute_wins(
 
     Parameters:
         uids (list): A list of uids to compare.
-        uid_to_average_loss (dict): A dictionary of average loss for each uid over all batches.
+        uid_to_score (dict): A dictionary of scores for each uid.
         uid_to_block (dict): A dictionary of blocks for each uid.
         epsilon_func (EpsilonFunc): Function that determines how much advantage to give to the earlier block.
         current_block: The current block.
@@ -96,8 +100,8 @@ def compute_wins(
             wins[uid_i] += (
                 1
                 if iswin(
-                    uid_to_average_loss[uid_i],
-                    uid_to_average_loss[uid_j],
+                    uid_to_score[uid_i],
+                    uid_to_score[uid_j],
                     uid_to_block[uid_i],
                     uid_to_block[uid_j],
                     epsilon_func,
@@ -112,8 +116,79 @@ def compute_wins(
     return wins, win_rate
 
 
+@dataclasses.dataclass
+class ScoreDetails:
+    """Details of the score for a model."""
+
+    raw_score: typing.Optional[float] = None
+    norm_score: typing.Optional[float] = None
+    weighted_norm_score: typing.Optional[float] = None
+    num_samples: int = 0
+
+
+def score_model(
+    model: Model,
+    evals: typing.List[EvalTask],
+    samples: typing.List[typing.List[EvalSample]],
+    device: str,
+) -> typing.Tuple[float, dict]:
+    """Scores a model based on the provided eval tasks.
+
+    Args:
+        model (torch.nn.Module): The model to score.
+        evals (list): A list of EvalTasks to score the model on.
+        samples (list): A list of samples to use for scoring for the eval tasks. Must be the same length as evals.
+        competition (Competition): The competition to score the model for.
+        device (str): The device to use for computation (e.g., 'cpu', 'gpu').
+
+    Returns:
+        tuple: A tuple containing the score and a dictionary of score details."""
+
+    if len(evals) != len(samples):
+        raise ValueError("Number of eval tasks and samples must match.")
+
+    if not model.tokenizer:
+        raise ValueError("Model does not have a tokenizer")
+
+    with torch.inference_mode():
+        model.pt_model.to(device)
+        model.pt_model.eval()
+
+        score = 0
+        score_details = {task.name: ScoreDetails() for task in evals}
+        tokenizer = model.tokenizer
+
+        for task, samples in zip(evals, samples):
+            logging.trace(f"Scoring model on task: {task.name}")
+            match task.method_id:
+                case EvalMethodId.TEXT_LOSS:
+                    raw_score = compute_text_loss(
+                        model=model.pt_model,
+                        batches=samples,
+                        device=device,
+                        pad_token_id=tokenizer.eos_token_id,
+                    )
+                case _:
+                    raise ValueError(f"Unhandled evaluation method {task.method_id}.")
+            # Normalize score
+            normalized_score = normalize_score(
+                raw_score, task.normalization_id, task.normalization_kwargs
+            )
+            weighted_norm_score = normalized_score * task.weight
+
+            score += weighted_norm_score
+            score_details[task.name] = ScoreDetails(
+                raw_score=raw_score,
+                norm_score=normalized_score,
+                weighted_norm_score=weighted_norm_score,
+                num_samples=len(samples),
+            )
+
+    return score, score_details
+
+
 def compute_competitive_uids(
-    uid_to_average_loss: typing.Dict[int, float],
+    uid_to_score: typing.Dict[int, float],
     uid_to_block: typing.Dict[int, int],
     epsilon_func: EpsilonFunc,
 ) -> typing.List[int]:
@@ -121,7 +196,7 @@ def compute_competitive_uids(
     Computes the list of any uids that may at one point be the top model.
 
     Parameters:
-        uid_to_average_loss (dict): A dictionary of average loss for each uid over all batches.
+        uid_to_score (dict): A dictionary of score for each uid over all batches.
         uid_to_block (dict): A dictionary of blocks for each uid.
         epsilon_func (EpsilonFunc): Function that determines how much advantage to give to the earlier block.
 
@@ -132,8 +207,8 @@ def compute_competitive_uids(
     fully_decayed_epsilon = 1 - epsilon_func.compute_epsilon(
         current_block=math.inf, model_block=0
     )
-    fully_decayed_losses = {
-        uid: uid_to_average_loss[uid] * fully_decayed_epsilon for uid in uid_to_block
+    fully_decayed_scores = {
+        uid: uid_to_score[uid] * fully_decayed_epsilon for uid in uid_to_block
     }
 
     # Iterate through the models and only keep models who's loss is better than
@@ -141,7 +216,7 @@ def compute_competitive_uids(
     # If the model cannot, then there exists at least one model at an earlier block which
     # will always have a better epislon adjusted loss, thus it will never be the top model.
     competitive_uids = []
-    for uid, loss in uid_to_average_loss.items():
+    for uid, loss in uid_to_score.items():
         # Check if the current UID beats all earlier (or same block) models at full decay.
         # all([]) is true so we always keep the earliest model.
         earlier_uids = [
@@ -149,139 +224,7 @@ def compute_competitive_uids(
             for i, block in uid_to_block.items()
             if i != uid and block <= uid_to_block[uid]
         ]
-        if all(loss < fully_decayed_losses[uid_other] for uid_other in earlier_uids):
+        if all(loss < fully_decayed_scores[uid_other] for uid_other in earlier_uids):
             competitive_uids.append(uid)
 
     return competitive_uids
-
-
-def check_for_reasonable_output(
-    model, input1: torch.Tensor, input2: torch.Tensor, pad_token_id: int
-) -> bool:
-    """Checks that a model generates reasonable outputs for two given inputs.
-
-    Args:
-        model (torch.nn.Module): The model for which outputs are to be checked. Already loaded to device.
-        input1 (torch.Tensor]): Tokenized input1 to check. Already loaded to device.
-        input2 (torch.Tensor]): Tokenized input2 to check. Already loaded to device.
-        pad_token_id (int): Pad token id for the tokenizer used to generate inputs 1 and 2.
-
-    Returns:
-        bool: If the model generates reasonable outputs.
-    """
-    # Generate 20 tokens of output from the model for each prompt.
-    output_length = 20
-    # Only take the last 20 tokens since otherwise we also get the prompt ids.
-    generate_id1s = model.generate(
-        input1,
-        min_new_tokens=output_length,
-        max_new_tokens=output_length,
-        pad_token_id=pad_token_id,
-    )[:, -output_length:]
-    generate_id2s = model.generate(
-        input2,
-        min_new_tokens=output_length,
-        max_new_tokens=output_length,
-        pad_token_id=pad_token_id,
-    )[:, -output_length:]
-
-    # Check if too many of the generated ids are the same between the two outputs.
-    if torch.sum(torch.eq(generate_id1s, generate_id2s)).item() >= output_length / 2:
-        bt.logging.info(
-            f"Model with config {model.config} had too much overlap between generated outputs."
-        )
-        return False
-
-    # Check if internally both responses are too repetitive.
-    most_common_counts = []
-    for tensor in [generate_id1s, generate_id2s]:
-        # Find unique elements and their counts
-        _, counts = torch.unique(tensor, return_counts=True)
-        # Find the index of the maximum count
-        max_count_index = torch.argmax(counts)
-        # Extract the count of the most common element
-        most_common_counts.append(counts[max_count_index].item())
-
-    if all(count > output_length / 2 for count in most_common_counts):
-        logging.info(
-            f"Model with config {model.config} had too much repetition in generated outputs."
-        )
-        return False
-
-    # Passed all the checks, return True.
-    return True
-
-
-def compute_losses(
-    model,
-    batches: typing.List[np.ndarray],
-    device: str,
-    pad_token_id: int,
-    sample_packing_used: bool,
-) -> typing.List[float]:
-    """
-    Computes the losses for a given model on provided batches.
-
-    Parameters:
-        model (torch.nn.Module): The model for which losses are to be computed.
-        batches (List): A list of batches.
-        device (str): The device to use for computation (e.g., 'cpu', 'gpu').
-        pad_token_id int: Pad token id for the tokenizer used to tokenize the batches.
-
-    Returns:
-        list: A list of losses for each batch.
-    """
-    model.to(device)
-    model.eval()
-
-    # First check that model generates reasonable looking outputs.
-    # Grab 100 tokens from the first two batches as 'prompts'. (1 x Seq Length tensors.)
-    prompt_length = 100
-    token_inputs_1 = torch.tensor(batches[0][:, :prompt_length]).to(device)
-    token_inputs_2 = torch.tensor(batches[1][:, :prompt_length]).to(device)
-
-    if not check_for_reasonable_output(
-        model, token_inputs_1, token_inputs_2, pad_token_id
-    ):
-        return [math.inf for _ in range(len(batches))]
-
-    # Everything looks good! Continue to computing actual losses.
-
-    # Iterate over each page and corresponding batches
-    losses = []
-    with torch.no_grad():
-        for batch in batches:
-            try:
-                inputs = torch.tensor(batch).to(device)
-                logits = model(inputs).logits
-
-                shift_logits = logits[..., :-1, :].contiguous()
-                shift_labels = inputs[..., 1:].contiguous()
-
-                if not sample_packing_used:
-
-                    # If sample unpacking is used,
-                    # create a mask to indicate location of PAD tokens.
-                    # Note, PAD tokens are always set to EOS tokens,
-                    # For this reason, we want to ignore all but the
-                    # first EOS token (the real one)
-                    pad_mask = shift_labels == pad_token_id
-                    zeros = torch.zeros_like(shift_labels[..., :1])
-                    pad_mask = torch.cat((zeros, pad_mask[..., :-1]), dim=-1).bool()
-                    # Set all the padded labels to -100, since the
-                    # CrossEntropyLoss ignores -100 labels by default.
-                    shift_labels[pad_mask] = -100
-
-                # Flatten the tokens
-                loss_fct = torch.nn.CrossEntropyLoss()
-                shift_logits = shift_logits.view(-1, model.config.vocab_size)
-                shift_labels = shift_labels.view(-1)
-                loss = loss_fct(shift_logits, shift_labels).item()
-
-                losses.append(loss)
-            except Exception as e:
-                bt.logging.error(f"Exception occurred: {e}")
-                traceback.print_exc()  # Print the stack trace
-                losses.append(math.inf)  # Use infinity to indicate failure
-
-    return losses

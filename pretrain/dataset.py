@@ -30,7 +30,7 @@ class SubsetLoader(IterableDataset):
         sequence_length=None,
         num_pages=None,
         tokenizer: AutoTokenizer = None,
-        pack_samples: bool = False,
+        pack_samples: bool = True,
         random_seed: typing.Optional[int] = None,
         config: str = "default",
         split: str = "train",
