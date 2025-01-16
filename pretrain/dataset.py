@@ -157,7 +157,7 @@ class SubsetLoader(IterableDataset):
 
                 for row in response.json()["rows"]:
                     content = self._get_content_from_row(row)
-                    input_ids = self.tokenizer(content, truncation=False)["input_ids"]
+                    input_ids = self.tokenizer(content, truncation=True)["input_ids"]
                     self.buffer += input_ids
                     self.buffer += [self.tokenizer.eos_token_id]
 
@@ -244,11 +244,18 @@ class SubsetPes2oXLoader(SubsetLoader):
 
 
 class SubsetFineMathLoader(SubsetLoader):
-    max_pages: int = 2_400_000
+    max_pages: int = 21_400_000
     name: str = "HuggingFaceTB/finemath"
 
     def __init__(self, **kwargs):
         super().__init__(config="finemath-3plus", **kwargs)
+
+class SubsetInfiWebMathLoader(SubsetLoader):
+    max_pages: int = 13_900_000
+    name: str = "HuggingFaceTB/finemath"
+
+    def __init__(self, **kwargs):
+        super().__init__(config="infiwebmath-3plus", **kwargs)
 
 
 class SubsetStackV1DedupLoader(SubsetLoader):
@@ -257,7 +264,7 @@ class SubsetStackV1DedupLoader(SubsetLoader):
 
     def __init__(self, **kwargs):
         super().__init__(requires_auth=True, **kwargs)
-        
+
 class SubsetStackV2DedupLoader(SubsetLoader):
     max_pages: int = 5_451_114_734
     name: str = "bigcode/the-stack-v2-dedup"
@@ -298,15 +305,6 @@ class SubsetStackV2DedupLoader(SubsetLoader):
 class SubsetFalconLoader(SubsetLoader):
     max_pages: int = 968000015
     name: str = "tiiuae/falcon-refinedweb"
-
-"""
-class SubsetFineWebLoader(SubsetLoader):
-    max_pages: int = 48_620_701_571
-    name: str = "HuggingFaceFW/fineweb"
-
-    def __init__(self, **kwargs):
-        super().__init__(requires_auth=False, **kwargs)
-"""
 
 class SubsetFineWebEdu2Loader(SubsetLoader):
     name: str = "HuggingFaceFW/fineweb-edu-score-2"
@@ -383,7 +381,7 @@ class SubsetFineWebEdu2Loader(SubsetLoader):
 
                 for row in response.json()["rows"]:
                     content = row["row"]["text"]
-                    input_ids = self.tokenizer(content, truncation=False)["input_ids"]
+                    input_ids = self.tokenizer(content, truncation=True)["input_ids"]
                     self.buffer += input_ids
                     self.buffer += [self.tokenizer.eos_token_id]
 
@@ -459,10 +457,9 @@ class SubsetFineWebEdu2Loader(SubsetLoader):
                     raise
 
         return rows
-    
+
 class SubsetFineWebLoader(SubsetFineWebEdu2Loader):
+    name: str = "HuggingFaceFW/fineweb"
 
     def __init__(self, **kwargs):
         super().__init__(requires_auth=False, **kwargs)
-        self.name = "HuggingFaceFW/fineweb"
-    

@@ -32,7 +32,7 @@ from pretrain.eval.method import EvalMethodId
 # ---------------------------------
 
 # Release
-__version__ = "4.6.4"
+__version__ = "5.0.0"
 
 # Validator schema version
 __validator_version__ = "4.6.0"
@@ -56,6 +56,9 @@ ROOT_DIR = Path(__file__).parent.parent
 # This corresponded to top-10 validator on july 31st, 2024
 WEIGHT_SYNC_VALI_MIN_STAKE = 200_000
 
+# Activation block with multi-datasets for 3B and 14B
+BLOCK_MULTI_DATASETS = 4_732_978
+
 # Minimum percent of weight on a vali for a miner to be considered a top miner.
 # Since there can be multiple competitions at different reward percentages we can't just check biggest.
 WEIGHT_SYNC_MINER_MIN_PERCENT = 0.05
@@ -63,9 +66,21 @@ WEIGHT_SYNC_MINER_MIN_PERCENT = 0.05
 # Validator eval batch size.
 BATCH_SIZE = 1
 # Validators number of pages to eval over miners on each step.
+
+# This will be used before activation block BLOCK_MULTI_DATASETS
 PAGES_PER_EVAL = 22
-# Validators number of pages to eval over miners one ach step for stack v2.
 PAGES_PER_EVAL_STACK_V2_DEDUP = 9
+
+# These well be used after activation block
+PAGES_PER_EVAL_FINEWEB = 15
+PAGES_PER_EVAL_FINEWEB2 = 15
+PAGES_PER_EVAL_STACK2 = 30
+PAGES_PER_EVAL_PES2OX = 2
+PAGES_PER_EVAL_FINEMATH3P = 6
+PAGES_PER_EVAL_WEBMATH3P = 6
+
+# Maximum number of batches to use for evaluation per dataset.
+MAX_BATCHES_PER_DATASET = 50
 
 # A mapping of block numbers to the supported model types as of that block.
 ALLOWED_MODEL_TYPES_1 = {
@@ -90,17 +105,12 @@ ALLOWED_MODEL_TYPES_2 = {
     Qwen2ForCausalLM,
 }
 
-DATASET_BY_COMPETITION_ID: Dict[CompetitionId, str] = {
-    CompetitionId.B3_MODEL: pt.dataset.SubsetFalconLoader,
-    CompetitionId.B14_MODEL: pt.dataset.SubsetFineWebEdu2Loader,
-    # B14 model multi dataset adds the following dataset to the baseline b14 competition.
-    CompetitionId.B14_MODEL_MULTI_DATASET: pt.dataset.SubsetStackV2DedupLoader,
-}
 
 # Synchronize on blocks roughly every 30 minutes.
 SYNC_BLOCK_CADENCE = 150
 # Delay at least as long as the sync block cadence with an additional buffer.
 EVAL_BLOCK_DELAY = SYNC_BLOCK_CADENCE + 100
+
 
 MODEL_CONSTRAINTS_BY_COMPETITION_ID: Dict[CompetitionId, ModelConstraints] = {
     CompetitionId.B3_MODEL: ModelConstraints(
@@ -154,6 +164,37 @@ MODEL_CONSTRAINTS_BY_COMPETITION_ID: Dict[CompetitionId, ModelConstraints] = {
     ),
 }
 
+MODEL_CONSTRAINTS_BY_COMPETITION_ID_MULTI: Dict[CompetitionId, ModelConstraints] = {
+    CompetitionId.B3_MODEL: ModelConstraints(
+        max_model_parameter_size=3_400_000_000,
+        min_model_parameter_size=3_200_000_000,
+        sequence_length=4096,
+        allowed_architectures=ALLOWED_MODEL_TYPES_2,
+        tokenizer="Xenova/gpt-4",
+        kwargs={
+            "torch_dtype": torch.bfloat16,
+            "attn_implementation": "flash_attention_2",
+        },
+        eval_block_delay=EVAL_BLOCK_DELAY,
+        epsilon_func=LinearDecay(0.005, 0.0005, 50400),
+        max_bytes=15 * 1024 * 1024 * 1024,
+    ),
+    CompetitionId.B14_MODEL: ModelConstraints(
+        max_model_parameter_size=13_900_000_000,
+        min_model_parameter_size=13_700_000_000,
+        sequence_length=4096,
+        allowed_architectures=ALLOWED_MODEL_TYPES_2,
+        tokenizer="Xenova/gpt-4",
+        kwargs={
+            "torch_dtype": torch.bfloat16,
+            "attn_implementation": "flash_attention_2",
+        },
+        eval_block_delay=EVAL_BLOCK_DELAY,
+        epsilon_func=LinearDecay(0.005, 0.0005, 72000),
+        max_bytes=29 * 1024 * 1024 * 1024,
+    ),
+}
+
 # Schedule of competitions by block.
 COMPETITION_SCHEDULE_BY_BLOCK: List[Tuple[int, List[Competition]]] = [
     (
@@ -183,9 +224,9 @@ COMPETITION_SCHEDULE_BY_BLOCK: List[Tuple[int, List[Competition]]] = [
                 0.4,
                 eval_tasks=[
                     EvalTask(
-                        name="FINEWEB",
+                        name="FINEWEB_EDU2",
                         method_id=EvalMethodId.TEXT_LOSS,
-                        dataset_id=DatasetId.FINEWEB,
+                        dataset_id=DatasetId.FINEWEB2,
                         normalization_id=NormalizationId.NONE,
                         dataset_kwargs={
                             "batch_size": BATCH_SIZE,
@@ -203,9 +244,9 @@ COMPETITION_SCHEDULE_BY_BLOCK: List[Tuple[int, List[Competition]]] = [
                 0.4,
                 eval_tasks=[
                     EvalTask(
-                        name="FINEWEB",
+                        name="FINEWEB_EDU2",
                         method_id=EvalMethodId.TEXT_LOSS,
-                        dataset_id=DatasetId.FINEWEB,
+                        dataset_id=DatasetId.FINEWEB2,
                         normalization_id=NormalizationId.NONE,
                         dataset_kwargs={
                             "batch_size": BATCH_SIZE,
@@ -214,7 +255,7 @@ COMPETITION_SCHEDULE_BY_BLOCK: List[Tuple[int, List[Competition]]] = [
                         weight=0.85,
                     ),
                     EvalTask(
-                        name="STACKV2",
+                        name="STACKV2_DEDUP",
                         method_id=EvalMethodId.TEXT_LOSS,
                         dataset_id=DatasetId.STACK2,
                         normalization_id=NormalizationId.NONE,
@@ -228,6 +269,157 @@ COMPETITION_SCHEDULE_BY_BLOCK: List[Tuple[int, List[Competition]]] = [
             ),
         ],
     ),
+    ( BLOCK_MULTI_DATASETS,
+        [
+            Competition(
+                CompetitionId.B3_MODEL,
+                MODEL_CONSTRAINTS_BY_COMPETITION_ID_MULTI[CompetitionId.B3_MODEL],
+                0.3,
+                eval_tasks=[
+                    EvalTask(
+                        name="FINEWEB",
+                        method_id=EvalMethodId.TEXT_LOSS,
+                        dataset_id=DatasetId.FINEWEB,
+                        normalization_id=NormalizationId.NONE,
+                        dataset_kwargs={
+                            "batch_size": BATCH_SIZE,
+                            "num_pages": PAGES_PER_EVAL_FINEWEB,
+                        },
+                        weight=0.3,
+                    ),
+                    EvalTask(
+                        name="FINEWEB_EDU2",
+                        method_id=EvalMethodId.TEXT_LOSS,
+                        dataset_id=DatasetId.FINEWEB2,
+                        normalization_id=NormalizationId.NONE,
+                        dataset_kwargs={
+                            "batch_size": BATCH_SIZE,
+                            "num_pages": PAGES_PER_EVAL_FINEWEB2,
+                        },
+                        weight=0.25,
+                    ),
+                    EvalTask(
+                        name="STACKV2_DEDUP",
+                        method_id=EvalMethodId.TEXT_LOSS,
+                        dataset_id=DatasetId.STACK2,
+                        normalization_id=NormalizationId.NONE,
+                        dataset_kwargs={
+                            "batch_size": BATCH_SIZE,
+                            "num_pages": PAGES_PER_EVAL_STACK2,
+                        },
+                        weight=0.35,
+                    ),
+                    EvalTask(
+                        name="PES2OX",
+                        method_id=EvalMethodId.TEXT_LOSS,
+                        dataset_id=DatasetId.PES2OX,
+                        normalization_id=NormalizationId.NONE,
+                        dataset_kwargs={
+                            "batch_size": BATCH_SIZE,
+                            "num_pages": PAGES_PER_EVAL_PES2OX,
+                        },
+                        weight=0.05,
+                    ),
+                    EvalTask(
+                        name="FINEMATH_3P",
+                        method_id=EvalMethodId.TEXT_LOSS,
+                        dataset_id=DatasetId.FINEMATH3P,
+                        normalization_id=NormalizationId.NONE,
+                        dataset_kwargs={
+                            "batch_size": BATCH_SIZE,
+                            "num_pages": PAGES_PER_EVAL_FINEMATH3P,
+                        },
+                        weight=0.03,
+                    ),
+                    EvalTask(
+                        name="INFIWEBMATH_3P",
+                        method_id=EvalMethodId.TEXT_LOSS,
+                        dataset_id=DatasetId.WEBMATH3P,
+                        normalization_id=NormalizationId.NONE,
+                        dataset_kwargs={
+                            "batch_size": BATCH_SIZE,
+                            "num_pages": PAGES_PER_EVAL_WEBMATH3P,
+                        },
+                        weight=0.02,
+                    ),
+                ],
+            ),
+            Competition(
+                CompetitionId.B14_MODEL,
+                MODEL_CONSTRAINTS_BY_COMPETITION_ID_MULTI[CompetitionId.B14_MODEL],
+                0.7,
+                eval_tasks=[
+                    EvalTask(
+                        name="FINEWEB",
+                        method_id=EvalMethodId.TEXT_LOSS,
+                        dataset_id=DatasetId.FINEWEB,
+                        normalization_id=NormalizationId.NONE,
+                        dataset_kwargs={
+                            "batch_size": BATCH_SIZE,
+                            "num_pages": PAGES_PER_EVAL_FINEWEB,
+                        },
+                        weight=0.3,
+                    ),
+                    EvalTask(
+                        name="FINEWEB_EDU2",
+                        method_id=EvalMethodId.TEXT_LOSS,
+                        dataset_id=DatasetId.FINEWEB2,
+                        normalization_id=NormalizationId.NONE,
+                        dataset_kwargs={
+                            "batch_size": BATCH_SIZE,
+                            "num_pages": PAGES_PER_EVAL_FINEWEB2,
+                        },
+                        weight=0.25,
+                    ),
+                    EvalTask(
+                        name="STACKV2_DEDUP",
+                        method_id=EvalMethodId.TEXT_LOSS,
+                        dataset_id=DatasetId.STACK2,
+                        normalization_id=NormalizationId.NONE,
+                        dataset_kwargs={
+                            "batch_size": BATCH_SIZE,
+                            "num_pages": PAGES_PER_EVAL_STACK2,
+                        },
+                        weight=0.35,
+                    ),
+                    EvalTask(
+                        name="PES2OX",
+                        method_id=EvalMethodId.TEXT_LOSS,
+                        dataset_id=DatasetId.PES2OX,
+                        normalization_id=NormalizationId.NONE,
+                        dataset_kwargs={
+                            "batch_size": BATCH_SIZE,
+                            "num_pages": PAGES_PER_EVAL_PES2OX,
+                        },
+                        weight=0.05,
+                    ),
+                    EvalTask(
+                        name="FINEMATH_3P",
+                        method_id=EvalMethodId.TEXT_LOSS,
+                        dataset_id=DatasetId.FINEMATH3P,
+                        normalization_id=NormalizationId.NONE,
+                        dataset_kwargs={
+                            "batch_size": BATCH_SIZE,
+                            "num_pages": PAGES_PER_EVAL_FINEMATH3P,
+                        },
+                        weight=0.03,
+                    ),
+                    EvalTask(
+                        name="INFIWEBMATH_3P",
+                        method_id=EvalMethodId.TEXT_LOSS,
+                        dataset_id=DatasetId.WEBMATH3P,
+                        normalization_id=NormalizationId.NONE,
+                        dataset_kwargs={
+                            "batch_size": BATCH_SIZE,
+                            "num_pages": PAGES_PER_EVAL_WEBMATH3P,
+                        },
+                        weight=0.02,
+                    ),
+                ],
+            ),
+        ],
+    ),
+
 ]
 
 for block_and_competitions in COMPETITION_SCHEDULE_BY_BLOCK:
@@ -260,7 +452,7 @@ temperature = 0.01
 sample_min = 5
 # Max number of uids that can be either pending eval or currently being evaluated.
 # We allow the sample_min per competition + 10 additional models to be held at any one time.
-updated_models_limit = sample_min * len(MODEL_CONSTRAINTS_BY_COMPETITION_ID) + 10
+updated_models_limit = sample_min * len(MODEL_CONSTRAINTS_BY_COMPETITION_ID_MULTI) + 10
 # time required between updates to the chain.
 chain_update_cadence = dt.timedelta(minutes=20)
 # Number of blocks required between retrying evaluation of a model.
