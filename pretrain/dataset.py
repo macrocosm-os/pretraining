@@ -243,13 +243,27 @@ class SubsetPes2oXLoader(SubsetLoader):
         super().__init__(config="pes2ov2", **kwargs)
 
 
+class SubsetFineMathLoader(SubsetLoader):
+    max_pages: int = 21_400_000
+    name: str = "HuggingFaceTB/finemath"
+
+    def __init__(self, **kwargs):
+        super().__init__(config="finemath-3plus", **kwargs)
+
+class SubsetInfiWebMathLoader(SubsetLoader):
+    max_pages: int = 13_900_000
+    name: str = "HuggingFaceTB/finemath"
+
+    def __init__(self, **kwargs):
+        super().__init__(config="infiwebmath-3plus", **kwargs)
+
+
 class SubsetStackV1DedupLoader(SubsetLoader):
     max_pages: int = 236655813
     name: str = "bigcode/the-stack-dedup"
 
     def __init__(self, **kwargs):
         super().__init__(requires_auth=True, **kwargs)
-
 
 class SubsetStackV2DedupLoader(SubsetLoader):
     max_pages: int = 5_451_114_734
@@ -291,7 +305,6 @@ class SubsetStackV2DedupLoader(SubsetLoader):
 class SubsetFalconLoader(SubsetLoader):
     max_pages: int = 968000015
     name: str = "tiiuae/falcon-refinedweb"
-
 
 class SubsetFineWebEdu2Loader(SubsetLoader):
     name: str = "HuggingFaceFW/fineweb-edu-score-2"
@@ -444,3 +457,9 @@ class SubsetFineWebEdu2Loader(SubsetLoader):
                     raise
 
         return rows
+
+class SubsetFineWebLoader(SubsetFineWebEdu2Loader):
+    name: str = "HuggingFaceFW/fineweb"
+
+    def __init__(self, **kwargs):
+        super().__init__(requires_auth=False, **kwargs)

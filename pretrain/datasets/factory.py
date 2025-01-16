@@ -2,11 +2,14 @@ from typing import Any, Dict
 
 from pretrain.dataset import (
     SubsetLoader,
+    SubsetFineWebLoader,
     SubsetFineWebEdu2Loader,
     SubsetFalconLoader,
     SubsetPes2oXLoader,
     SubsetStackV1DedupLoader,
     SubsetStackV2DedupLoader,
+    SubsetFineMathLoader,
+    SubsetInfiWebMathLoader,
 )
 
 from pretrain.datasets.ids import DatasetId
@@ -33,6 +36,13 @@ class DatasetLoaderFactory:
                     **dataset_kwargs,
                 )
             case DatasetId.FINEWEB:
+                return SubsetFineWebLoader(
+                    random_seed=seed,
+                    sequence_length=sequence_length,
+                    tokenizer=tokenizer,
+                    **dataset_kwargs,
+                )
+            case DatasetId.FINEWEB2:
                 return SubsetFineWebEdu2Loader(
                     random_seed=seed,
                     sequence_length=sequence_length,
@@ -53,8 +63,22 @@ class DatasetLoaderFactory:
                     tokenizer=tokenizer,
                     **dataset_kwargs,
                 )
-            case DatasetId.PES2:
+            case DatasetId.PES2OX:
                 return SubsetPes2oXLoader(
+                    random_seed=seed,
+                    sequence_length=sequence_length,
+                    tokenizer=tokenizer,
+                    **dataset_kwargs,
+                )
+            case DatasetId.FINEMATH3P:
+                return SubsetFineMathLoader(
+                    random_seed=seed,
+                    sequence_length=sequence_length,
+                    tokenizer=tokenizer,
+                    **dataset_kwargs,
+                )
+            case DatasetId.WEBMATH3P:
+                return SubsetInfiWebMathLoader(
                     random_seed=seed,
                     sequence_length=sequence_length,
                     tokenizer=tokenizer,

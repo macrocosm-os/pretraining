@@ -33,6 +33,7 @@ import os
 import pickle
 import threading
 import time
+import random
 import traceback
 import typing
 from collections import defaultdict
@@ -899,9 +900,13 @@ class Validator:
 
         logging.info("Starting evaluation for competition: " + str(competition.id))
 
-        running_14b_star = competition.id == CompetitionId.B14_MODEL and any(
+        running_14b_star = (
+            competition.id == CompetitionId.B14_MODEL and
+            cur_block < constants.BLOCK_MULTI_DATASETS and
+            any(
             comp.id == CompetitionId.B14_MODEL_MULTI_DATASET
             for comp in competition_schedule
+            )
         )
 
         if running_14b_star:
@@ -970,15 +975,25 @@ class Validator:
                     tokenizer=tokenizer,
                 )
                 batches = list(data_loader)
+
+                # Shuffle before trancating the list
+                random.Random(seed).shuffle(batches)
+
+                if cur_block < constants.BLOCK_MULTI_DATASETS:
+                    max_batches_per_dataset = len(batches)
+                else:
+                    max_batches_per_dataset = constants.MAX_BATCHES_PER_DATASET
+
                 if batches:
                     eval_tasks.append(eval_task)
                     data_loaders.append(data_loader)
 
                     logging.debug(
-                        f"Found {len(batches)} batches of size: {len(batches[0])} for data_loader: {data_loader.name} over pages {data_loader.get_page_names()}"
+                        f"Found {len(batches)} batches of size: {len(batches[0])} for data_loader: {data_loader.name}:{data_loader.config} over pages {data_loader.get_page_names()}. Up to {max_batches_per_dataset} batches were randomly chosen for evaluation."
                     )
 
-                    samples.append(batches)
+                    samples.append(batches[:max_batches_per_dataset])
+
                 else:
                     raise ValueError(
                         f"Did not find any data for data loader: {data_loader.name}"
@@ -998,7 +1013,7 @@ class Validator:
             with load_data_perf_14b_star.sample():
                 # We only want the stack v2 here.
                 for task_14b_star in competition_14b_star.eval_tasks:
-                    if task_14b_star.name == "STACKV2":
+                    if task_14b_star.name == "STACKV2_DEDUP":
                         data_loader_14b_star = DatasetLoaderFactory.get_loader(
                             dataset_id=task_14b_star.dataset_id,
                             dataset_kwargs=task_14b_star.dataset_kwargs,
@@ -1129,8 +1144,8 @@ class Validator:
                 # Make a deep copy of the current uid_to_state, average out the scores, and append new details.
                 uid_to_state_14b_star[uid_i] = copy.deepcopy(uid_to_state[uid_i])
                 # For scores we know there are only two tasks, so we weight it by the additional 14b task.
-                num_fineweb_samples = score_details["FINEWEB"].num_samples
-                num_stack_samples = score_details_14b_star["STACKV2"].num_samples
+                num_fineweb_samples = score_details["FINEWEB_EDU2"].num_samples
+                num_stack_samples = score_details_14b_star["STACKV2_DEDUP"].num_samples
                 total_samples = num_fineweb_samples + num_stack_samples
                 fineweb_weighted_score = score * num_fineweb_samples / total_samples
                 stack_weighted_score = (
@@ -1144,15 +1159,15 @@ class Validator:
                 # We also need to adjust the weighted score details as each thinks it was 100%.
                 # 14B only runs FINEWEB so we can just adjust this one score details.
                 uid_to_state_14b_star[uid_i].score_details[
-                    "FINEWEB"
+                    "FINEWEB_EDU2"
                 ].weighted_norm_score = fineweb_weighted_score
                 # Likewise we know 14B* only adds Stack V2
-                score_details_14b_star["STACKV2"].weighted_norm_score = (
+                score_details_14b_star["STACKV2_DEDUP"].weighted_norm_score = (
                     stack_weighted_score
                 )
                 # And copy over into the new score details dictionary.
-                uid_to_state_14b_star[uid_i].score_details["STACKV2"] = (
-                    score_details_14b_star["STACKV2"]
+                uid_to_state_14b_star[uid_i].score_details["STACKV2_DEDUP"] = (
+                    score_details_14b_star["STACKV2_DEDUP"]
                 )
 
                 logging.info(
@@ -1434,7 +1449,7 @@ class Validator:
         pages = []
         for loader in data_loaders:
             for page_name in loader.get_page_names():
-                pages.append(f"{loader.name}:{page_name}")
+                pages.append(f"{loader.name}:{loader.config}:{page_name}")
 
         # Build step log
         step_log = {
@@ -1492,8 +1507,12 @@ class Validator:
                 # Hack to get the 'right' name back here.
                 task_to_dataset_name = {
                     "FALCON": "tiiuae/falcon-refinedweb",
-                    "FINEWEB": "HuggingFaceFW/fineweb-edu-score-2",
-                    "STACKV2": "bigcode/the-stack-v2-dedup",
+                    "FINEWEB": "HuggingFaceFW/fineweb",
+                    "FINEWEB_EDU2": "HuggingFaceFW/fineweb-edu-score-2",
+                    "STACKV2_DEDUP": "bigcode/the-stack-v2-dedup",
+                    "PES2OX": "laion/Pes2oX-fulltext",
+                    "FINEMATH_3P": "HuggingFaceTB/finemath:finemath-3p",
+                    "INFIWEBMATH_3P": "HuggingFaceTB/finemath:infiwebmath-3p",
                 }
                 dataset_name = (
                     task_to_dataset_name[task_name]
