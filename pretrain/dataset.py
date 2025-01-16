@@ -1,19 +1,20 @@
-import typing
+import os
 import random
 import time
-import requests
-import boto3
-import smart_open
-import numpy as np
+import typing
+
 import bittensor as bt
+import boto3
+import numpy as np
+import requests
+import smart_open
+from dotenv import load_dotenv
+from taoverse.utilities import logging
 from torch.utils.data import IterableDataset
 from transformers import AutoTokenizer
-from datasets import load_dataset
-from pprint import pprint
 
-import os
-from dotenv import load_dotenv
 load_dotenv()
+
 
 class SubsetLoader(IterableDataset):
     """Base class for data-specific subset loader classes."""
@@ -29,7 +30,7 @@ class SubsetLoader(IterableDataset):
         sequence_length=None,
         num_pages=None,
         tokenizer: AutoTokenizer = None,
-        pack_samples: bool = False,
+        pack_samples: bool = True,
         random_seed: typing.Optional[int] = None,
         config: str = "default",
         split: str = "train",
@@ -82,7 +83,7 @@ class SubsetLoader(IterableDataset):
                 if len(self.buffer) >= self.sequence_length:
                     break
 
-                bt.logging.warning(
+                logging.warning(
                     f"All fetched pages seem to be empty or have an extremely low token count. "
                     f"Trying to fetch a new set of pages... (attempt {fetch_attempt}/{self.retry_limit})"
                 )
@@ -111,7 +112,7 @@ class SubsetLoader(IterableDataset):
 
     def _initialize_pages(self):
         """Initialize pages based on loader type"""
-        if hasattr(self, 'fetch_dataset_configs'):
+        if hasattr(self, "fetch_dataset_configs"):
             # For FineWebEdu2 style loaders
             self.configs_data = self.fetch_dataset_configs()
             self._fetch_data_to_buffer(self.num_pages)
@@ -132,11 +133,13 @@ class SubsetLoader(IterableDataset):
         # Handle different page types (tuple vs int)
         if isinstance(page, tuple):
             config_name, page_num, split = page
-            self.params.update({
-                "config": config_name,
-                "split": split,
-                "offset": page_num,
-            })
+            self.params.update(
+                {
+                    "config": config_name,
+                    "split": split,
+                    "offset": page_num,
+                }
+            )
         else:
             self.params["offset"] = page
 
@@ -148,7 +151,7 @@ class SubsetLoader(IterableDataset):
                 response = requests.get(
                     self.rows_base_url,
                     params=self.params,
-                    headers=self._get_request_headers()
+                    headers=self._get_request_headers(),
                 )
                 response.raise_for_status()
 
@@ -162,13 +165,13 @@ class SubsetLoader(IterableDataset):
 
             except requests.exceptions.RequestException as e:
                 attempt += 1
-                bt.logging.warning(
+                logging.warning(
                     f"Failed to fetch data for page {page}, retrying. Attempt {attempt}/{self.retry_limit}"
                 )
                 if attempt < self.retry_limit:
                     time.sleep(self.retry_delay)
                 else:
-                    bt.logging.error("Maximum retry limit reached. Unable to fetch data.")
+                    logging.error("Maximum retry limit reached. Unable to fetch data.")
                     raise
 
     def _get_content_from_row(self, row):
@@ -181,12 +184,14 @@ class SubsetLoader(IterableDataset):
 
     def get_page_names(self):
         """Get page names in consistent format"""
-        if not hasattr(self, 'pages'):
+        if not hasattr(self, "pages"):
             return []
 
         if isinstance(self.pages[0], tuple):
-            return [f"{cfg_name}_{num_rows}_{split}"
-                   for cfg_name, num_rows, split in self.pages]
+            return [
+                f"{cfg_name}_{num_rows}_{split}"
+                for cfg_name, num_rows, split in self.pages
+            ]
         return self.pages
 
     def _get_pad_size(self, input_ids):
@@ -238,6 +243,21 @@ class SubsetPes2oXLoader(SubsetLoader):
         super().__init__(config="pes2ov2", **kwargs)
 
 
+class SubsetFineMathLoader(SubsetLoader):
+    max_pages: int = 21_400_000
+    name: str = "HuggingFaceTB/finemath"
+
+    def __init__(self, **kwargs):
+        super().__init__(config="finemath-3plus", **kwargs)
+
+class SubsetInfiWebMathLoader(SubsetLoader):
+    max_pages: int = 13_900_000
+    name: str = "HuggingFaceTB/finemath"
+
+    def __init__(self, **kwargs):
+        super().__init__(config="infiwebmath-3plus", **kwargs)
+
+
 class SubsetStackV1DedupLoader(SubsetLoader):
     max_pages: int = 236655813
     name: str = "bigcode/the-stack-dedup"
@@ -254,35 +274,37 @@ class SubsetStackV2DedupLoader(SubsetLoader):
         # Create an AWS S3 session to enable reading data
         session = boto3.Session(
             aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
-            aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"])
+            aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
+        )
 
         self.s3_sess = session.client("s3")
 
         super().__init__(requires_auth=True, **kwargs)
 
-
     def _download_row_content(self, blob_id, src_encoding):
-        """Download the row content from S3.
-        """
+        """Download the row content from S3."""
 
         s3_url = f"https://softwareheritage.s3.amazonaws.com/content/{blob_id}"
 
-        with smart_open.open(s3_url, "rb", compression=".gz", transport_params={"client": self.s3_sess}) as fin:
+        with smart_open.open(
+            s3_url, "rb", compression=".gz", transport_params={"client": self.s3_sess}
+        ) as fin:
             content = fin.read().decode(src_encoding)
 
         return content
 
     def _get_content_from_row(self, row):
-        """Extract row content by downloading from S3 """
+        """Extract row content by downloading from S3"""
 
-        content = self._download_row_content(row['row']['blob_id'], row['row']['src_encoding'])
+        content = self._download_row_content(
+            row["row"]["blob_id"], row["row"]["src_encoding"]
+        )
         return content
 
 
 class SubsetFalconLoader(SubsetLoader):
     max_pages: int = 968000015
     name: str = "tiiuae/falcon-refinedweb"
-
 
 class SubsetFineWebEdu2Loader(SubsetLoader):
     name: str = "HuggingFaceFW/fineweb-edu-score-2"
@@ -314,13 +336,13 @@ class SubsetFineWebEdu2Loader(SubsetLoader):
 
             except requests.exceptions.RequestException as e:
                 attempt += 1
-                bt.logging.warning(
+                logging.warning(
                     f"Failed to fetch dataset configs, retrying. Attempt {attempt}/{self.retry_limit}"
                 )
                 if attempt < self.retry_limit:
                     time.sleep(self.retry_delay)
                 else:
-                    bt.logging.error("Maximum retry limit reached. Unable to fetch data.")
+                    logging.error("Maximum retry limit reached. Unable to fetch data.")
                     raise
 
     def _fetch_data_to_buffer(self, num_pages):
@@ -336,7 +358,7 @@ class SubsetFineWebEdu2Loader(SubsetLoader):
             if page in self.pages:
                 duplicates += 1
                 if duplicates >= self.duplicate_page_threshold:
-                    bt.logging.debug(
+                    logging.debug(
                         f"Hit duplicate page threshold of {self.duplicate_page_threshold}. "
                         f"Stopping early at: {len(self.pages)} pages."
                     )
@@ -365,11 +387,11 @@ class SubsetFineWebEdu2Loader(SubsetLoader):
 
             except requests.exceptions.RequestException as e:
                 attempts += 1
-                bt.logging.warning(
+                logging.warning(
                     f"Failed to fetch data, retrying. Attempt {attempts}/{self.retry_limit * num_pages}"
                 )
                 if attempts >= num_pages * self.retry_limit:
-                    bt.logging.error("Maximum retry limit reached. Unable to fetch data.")
+                    logging.error("Maximum retry limit reached. Unable to fetch data.")
                     raise
 
     def get_random_pages(self, num_pages, initial_offset):
@@ -400,7 +422,7 @@ class SubsetFineWebEdu2Loader(SubsetLoader):
             if page in downloaded_pages:
                 duplicates += 1
                 if duplicates >= self.duplicate_page_threshold:
-                    bt.logging.debug(
+                    logging.debug(
                         f"Hit duplicate page threshold of {self.duplicate_page_threshold}. "
                         f"Stopping early at: {len(downloaded_pages)} pages."
                     )
@@ -426,12 +448,18 @@ class SubsetFineWebEdu2Loader(SubsetLoader):
 
             except requests.exceptions.RequestException as e:
                 attempts += 1
-                bt.logging.warning(
+                logging.warning(
                     f"Failed to fetch data, retrying with a newly sampled page. "
                     f"Attempt {attempts}/{self.retry_limit * num_pages}"
                 )
                 if attempts >= num_pages * self.retry_limit:
-                    bt.logging.error("Maximum retry limit reached. Unable to fetch data.")
+                    logging.error("Maximum retry limit reached. Unable to fetch data.")
                     raise
 
         return rows
+
+class SubsetFineWebLoader(SubsetFineWebEdu2Loader):
+    name: str = "HuggingFaceFW/fineweb"
+
+    def __init__(self, **kwargs):
+        super().__init__(requires_auth=False, **kwargs)

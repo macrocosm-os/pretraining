@@ -16,19 +16,18 @@
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
 
+import argparse
 import asyncio
+import datetime as dt
 import math
 import os
 import random
 import typing
 
-
-import wandb
+import bittensor as bt
 import torch
-
-import argparse
-import constants
-
+import wandb
+from dotenv import load_dotenv
 from taoverse.metagraph import utils as metagraph_utils
 from taoverse.model.storage.chain.chain_model_metadata_store import (
     ChainModelMetadataStore,
@@ -37,15 +36,14 @@ from taoverse.model.storage.hugging_face.hugging_face_model_store import (
     HuggingFaceModelStore,
 )
 from taoverse.model.storage.model_metadata_store import ModelMetadataStore
+from taoverse.utilities import logging
+from taoverse.utilities import utils as taoverse_utils
 from taoverse.utilities.enum_action import IntEnumAction
-from competitions.data import CompetitionId
-
-import pretrain as pt
-import bittensor as bt
 from transformers import PreTrainedModel
-import datetime as dt
 
-from dotenv import load_dotenv
+import constants
+import pretrain as pt
+from competitions.data import CompetitionId
 
 load_dotenv()  # take environment variables from .env.
 
@@ -132,9 +130,7 @@ def get_config():
     parser.add_argument(
         "--bs", type=int, default=constants.batch_size, help="Batch size"
     )
-    parser.add_argument(
-        "--sl", type=int, default=constants.SEQUENCE_LENGTH_2, help="Sequence length"
-    )
+    parser.add_argument("--sl", type=int, default=4096, help="Sequence length")
     parser.add_argument(
         "--accumulation_steps",
         type=int,
@@ -149,7 +145,7 @@ def get_config():
     )
     parser.add_argument(
         "--netuid",
-        type=str,
+        type=int,
         default=constants.SUBNET_UID,
         help="The subnet UID.",
     )
@@ -196,7 +192,7 @@ async def load_starting_model(
             metagraph=metagraph,
             metadata_store=metadata_store,
         )
-        bt.logging.success(
+        logging.info(
             f"Training with best model from competition: {config.competition_id}. Model={str(model)}"
         )
         return model
@@ -210,7 +206,7 @@ async def load_starting_model(
             metagraph=metagraph,
             metadata_store=metadata_store,
         )
-        bt.logging.success(
+        logging.info(
             f"Training with model from uid: {config.load_uid}. Model={str(model)}"
         )
         return model
@@ -218,25 +214,29 @@ async def load_starting_model(
     # Check if we should load a model from a local directory.
     if config.load_model_dir:
         model = pt.mining.load_local_model(config.load_model_dir, kwargs)
-        bt.logging.success(f"Training with model from disk. Model={str(model)}")
+        logging.info(f"Training with model from disk. Model={str(model)}")
         return model
 
     # Check if we should load a model from a local file.
     if config.load_model:
         model = pt.mining.load_gpt2_model(config.load_model)
-        bt.logging.success(f"Training with model from disk. Model={str(model)}")
+        logging.info(f"Training with model from disk. Model={str(model)}")
         return model
 
     # Start from scratch.
     model = pt.model.get_model()
-    bt.logging.success(f"Training from scratch. Model={str(model)}")
+    logging.info(f"Training from scratch. Model={str(model)}")
 
     return model
 
 
 async def main(config: bt.config):
+    raise NotImplementedError("You must implement your own training logic in miner.py")
+
     # Create bittensor objects.
-    bt.logging(config=config)
+    bt.logging.set_warning()
+    taoverse_utils.logging.reinitialize()
+    taoverse_utils.configure_logging(config)
 
     wallet = bt.wallet(config=config)
     subtensor = bt.subtensor(config=config)
@@ -250,7 +250,7 @@ async def main(config: bt.config):
     # If running online, make sure the miner is registered, has a hugging face access token, and has provided a repo id.
     my_uid = None
     if not config.offline:
-        my_uid = meta_utils.assert_registered(wallet, metagraph)
+        my_uid = metagraph_utils.assert_registered(wallet, metagraph)
         HuggingFaceModelStore.assert_access_token_exists()
 
     # Create a unique run id for this run.
@@ -261,7 +261,7 @@ async def main(config: bt.config):
     use_wandb = False
     if not config.offline:
         if config.wandb_project is None or config.wandb_entity is None:
-            bt.logging.warning(
+            logging.warning(
                 "Wandb project or entity not specified. This run will not be logged to wandb"
             )
         else:
@@ -273,9 +273,9 @@ async def main(config: bt.config):
 
     if not model_constraints:
         raise RuntimeError(f"No competition found for {config.competition_id}")
-    
+
     kwargs = model_constraints.kwargs.copy()
-            
+
     # Init model.
     # Init model.
     tokenizer = pt.model.load_tokenizer(model_constraints, cache_dir=config.model_dir)
@@ -283,7 +283,7 @@ async def main(config: bt.config):
     model = model.train()
     model = model.to(config.device)
 
-    bt.logging.success(f"Saving model to path: {model_dir}.")
+    logging.info(f"Saving model to path: {model_dir}.")
     pt.mining.save(model, model_dir)
 
     # Build optimizer
@@ -308,7 +308,7 @@ async def main(config: bt.config):
                 "uid": my_uid,
                 "hotkey": wallet.hotkey.ss58_address,
                 "run_name": run_id,
-                "version": constants.__version__,                
+                "version": constants.__version__,
                 "type": "miner",
             },
             allow_val_change=True,
@@ -318,7 +318,7 @@ async def main(config: bt.config):
         # This is not seen by validators.
         wandb_run.save(os.path.join(model_dir, "*"), base_path=model_dir, policy="end")
     else:
-        bt.logging.warning(
+        logging.warning(
             "Not posting run to wandb. Either --offline is specified or the wandb settings are missing."
         )
 
@@ -335,7 +335,7 @@ async def main(config: bt.config):
             epoch_loss = 0.0
 
             # Prepare the data loader with random pages for each epoch
-            bt.logging.success(
+            logging.info(
                 f"Loading {config.pages_per_epoch} pages for training this epoch"
             )
             random_pages = [
@@ -346,7 +346,7 @@ async def main(config: bt.config):
             # Change this loader if you wish to use a different dataset
             loader = pt.dataset.SubsetFineWebEdu2Loader(
                 batch_size=config.bs,
-                sequence_length=config.sl
+                sequence_length=config.sl,
                 num_pages=config.pages_per_epoch,
                 tokenizer=tokenizer,
             )
@@ -369,7 +369,7 @@ async def main(config: bt.config):
                     n_acc_steps += 1
                     optimizer.step()  # Perform a single optimization step
                     optimizer.zero_grad()  # Clear gradients
-                    bt.logging.success(
+                    logging.info(
                         f"Step: {n_acc_steps} loss: {outputs.loss.detach().item()}"
                     )
                     if use_wandb:
@@ -388,24 +388,24 @@ async def main(config: bt.config):
             avg_loss = epoch_loss / n_batches
 
             # Log the average loss for the epoch
-            bt.logging.success(f"Epoch: {epoch_step} average loss: {avg_loss}")
+            logging.info(f"Epoch: {epoch_step} average loss: {avg_loss}")
             epoch_step += 1
 
             # Check if the average loss of this epoch is the best we've seen so far
             if avg_loss < best_avg_loss:
                 best_avg_loss = avg_loss  # Update the best average loss
 
-                bt.logging.success(f"New best average loss: {best_avg_loss}.")
+                logging.info(f"New best average loss: {best_avg_loss}.")
 
                 # Save the model to your mining dir.
-                bt.logging.success(f"Saving model to path: {model_dir}.")
+                logging.info(f"Saving model to path: {model_dir}.")
                 pt.mining.save(model, model_dir)
 
-        bt.logging.success("Finished training")
+        logging.info("Finished training")
         # Push the model to your run.
         if not config.offline:
             if best_avg_loss < config.avg_loss_upload_threshold:
-                bt.logging.success(
+                logging.info(
                     f"Trained model had a best_avg_loss of {best_avg_loss} which is below the threshold of {config.avg_loss_upload_threshold}. Uploading to hugging face. "
                 )
 
@@ -413,22 +413,21 @@ async def main(config: bt.config):
                 model_to_upload = pt.mining.load_local_model(
                     model_dir, model_constraints.kwargs
                 )
-                
+
                 await pt.mining.push(
                     model_to_upload,
                     config.hf_repo_id,
-                    wallet,                    
+                    wallet,
                     config.competition_id,
                     metadata_store=chain_metadata_store,
-                    use_hotkey_in_hash=config.use_hotkey_in_hash,                    
                 )
-                
+
             else:
-                bt.logging.success(
+                logging.info(
                     f"This training run achieved a best_avg_loss={best_avg_loss}, which did not meet the upload threshold. Not uploading to hugging face."
                 )
         else:
-            bt.logging.success(
+            logging.info(
                 "Not uploading to hugging face because --offline was specified."
             )
 
@@ -440,7 +439,7 @@ async def main(config: bt.config):
 
 if __name__ == "__main__":
     # Parse and print configuration
-    config = neuron_config.miner_config()
+    config = get_config()
 
     if config.list_competitions:
         print(constants.COMPETITION_SCHEDULE_BY_BLOCK)
