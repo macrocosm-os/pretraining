@@ -901,11 +901,11 @@ class Validator:
         logging.info("Starting evaluation for competition: " + str(competition.id))
 
         running_14b_star = (
-            competition.id == CompetitionId.B14_MODEL and
-            cur_block < constants.BLOCK_MULTI_DATASETS and
-            any(
-            comp.id == CompetitionId.B14_MODEL_MULTI_DATASET
-            for comp in competition_schedule
+            competition.id == CompetitionId.B14_MODEL
+            and cur_block < constants.BLOCK_MULTI_DATASETS
+            and any(
+                comp.id == CompetitionId.B14_MODEL_MULTI_DATASET
+                for comp in competition_schedule
             )
         )
 
@@ -1673,6 +1673,7 @@ class Validator:
         """Runs the validator loop, which continuously evaluates models and sets weights."""
         while True:
             try:
+                self._configure_logging(self.config)
                 await self.try_run_step(ttl=120 * 60)
                 self.global_step += 1
 
