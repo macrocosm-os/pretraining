@@ -141,6 +141,9 @@ class Validator:
 
         logging.info(f"Starting validator with config: {self.config}")
 
+        self.last_run_step_lock = threading.RLock()
+        self.last_run_step = None
+
         # === Bittensor objects ====
         self.wallet = bt.wallet(config=self.config)
         self.subtensor = bt.subtensor(config=self.config)
@@ -877,6 +880,9 @@ class Validator:
             6. Implements a blacklist mechanism to remove underperforming models from the evaluation set.
             7. Logs all relevant data for the step, including model IDs, pages, batches, wins, win rates, and losses.
         """
+
+        with self.last_run_step_lock:
+            self.last_run_step = dt.datetime.now()
 
         cur_block = self._get_current_block()
 
@@ -1669,8 +1675,25 @@ class Validator:
 
             return uids_to_competition_ids
 
+    def _watchdog(self):
+        while True:
+            time.sleep(10 * 60)
+            logging.debug("Performing watchdog check.")
+            with self.last_run_step_lock:
+                if (
+                    self.last_run_step
+                    and dt.datetime.now() - self.last_run_step > dt.timedelta(hours=2)
+                ):
+                    logging.error(
+                        "Validator has not run a step in the last 2 hours. Restarting the process."
+                    )
+                    os._exit(1)
+
     async def run(self):
         """Runs the validator loop, which continuously evaluates models and sets weights."""
+
+        threading.Thread(target=self._watchdog, daemon=True).start()
+
         while True:
             try:
                 self._configure_logging(self.config)
