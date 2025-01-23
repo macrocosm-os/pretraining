@@ -152,6 +152,7 @@ class SubsetLoader(IterableDataset):
                     self.rows_base_url,
                     params=self.params,
                     headers=self._get_request_headers(),
+                    timeout=15,
                 )
                 response.raise_for_status()
 
@@ -250,6 +251,7 @@ class SubsetFineMathLoader(SubsetLoader):
     def __init__(self, **kwargs):
         super().__init__(config="finemath-3plus", **kwargs)
 
+
 class SubsetInfiWebMathLoader(SubsetLoader):
     max_pages: int = 13_900_000
     name: str = "HuggingFaceTB/finemath"
@@ -264,6 +266,7 @@ class SubsetStackV1DedupLoader(SubsetLoader):
 
     def __init__(self, **kwargs):
         super().__init__(requires_auth=True, **kwargs)
+
 
 class SubsetStackV2DedupLoader(SubsetLoader):
     max_pages: int = 5_451_114_734
@@ -306,6 +309,7 @@ class SubsetFalconLoader(SubsetLoader):
     max_pages: int = 968000015
     name: str = "tiiuae/falcon-refinedweb"
 
+
 class SubsetFineWebEdu2Loader(SubsetLoader):
     name: str = "HuggingFaceFW/fineweb-edu-score-2"
 
@@ -319,7 +323,7 @@ class SubsetFineWebEdu2Loader(SubsetLoader):
         attempt = 0
         while attempt < self.retry_limit:
             try:
-                response = requests.get(self.size_base_url, params=params)
+                response = requests.get(self.size_base_url, params=params, timeout=15)
                 response.raise_for_status()
 
                 configs_dict = response.json()["size"]["splits"]
@@ -375,7 +379,7 @@ class SubsetFineWebEdu2Loader(SubsetLoader):
             }
 
             try:
-                response = requests.get(self.rows_base_url, params=params)
+                response = requests.get(self.rows_base_url, params=params, timeout=15)
                 response.raise_for_status()
                 self.pages.append(page)
 
@@ -439,7 +443,7 @@ class SubsetFineWebEdu2Loader(SubsetLoader):
             }
 
             try:
-                response = requests.get(self.rows_base_url, params=params)
+                response = requests.get(self.rows_base_url, params=params, timeout=15)
                 response.raise_for_status()
                 downloaded_pages.add(page)
 
@@ -457,6 +461,7 @@ class SubsetFineWebEdu2Loader(SubsetLoader):
                     raise
 
         return rows
+
 
 class SubsetFineWebLoader(SubsetFineWebEdu2Loader):
     name: str = "HuggingFaceFW/fineweb"
