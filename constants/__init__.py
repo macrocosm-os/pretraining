@@ -32,7 +32,7 @@ from pretrain.eval.method import EvalMethodId
 # ---------------------------------
 
 # Release
-__version__ = "5.0.0"
+__version__ = "5.1.0"
 
 # Validator schema version
 __validator_version__ = "4.6.0"

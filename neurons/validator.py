@@ -503,6 +503,7 @@ class Validator:
                 try:
                     updated = asyncio.run(
                         self.model_updater.sync_model(
+                            uid=next_uid,
                             hotkey=hotkey,
                             curr_block=curr_block,
                             schedule_by_block=constants.COMPETITION_SCHEDULE_BY_BLOCK,
@@ -606,6 +607,7 @@ class Validator:
                     try:
                         should_retry = asyncio.run(
                             self.model_updater.sync_model(
+                                uid=uid,
                                 hotkey=hotkey,
                                 curr_block=curr_block,
                                 schedule_by_block=constants.COMPETITION_SCHEDULE_BY_BLOCK,
