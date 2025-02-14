@@ -31,13 +31,12 @@ import logging
 import math
 import os
 import pickle
+import random
 import threading
 import time
-import random
 import traceback
 import typing
 from collections import defaultdict
-from websockets.exceptions import InvalidStatus
 
 import bittensor as bt
 import torch
@@ -55,8 +54,9 @@ from taoverse.model import utils as model_utils
 from taoverse.model.competition import utils as competition_utils
 from taoverse.model.competition.competition_tracker import CompetitionTracker
 from taoverse.model.competition.data import Competition
-from taoverse.model.competition.epsilon import EpsilonFunc, FixedEpsilon
+from taoverse.model.competition.epsilon import EpsilonFunc
 from taoverse.model.data import EvalResult
+from taoverse.model.eval.task import EvalTask
 from taoverse.model.model_tracker import ModelTracker
 from taoverse.model.model_updater import MinerMisconfiguredError, ModelUpdater
 from taoverse.model.storage.chain.chain_model_metadata_store import (
@@ -68,17 +68,15 @@ from taoverse.model.storage.hugging_face.hugging_face_model_store import (
 )
 from taoverse.utilities import logging, utils
 from taoverse.utilities.perf_monitor import PerfMonitor
+from websockets.exceptions import InvalidStatus
 
 import constants
 import pretrain as pt
 from competitions.data import CompetitionId
 from model.retry import should_retry_model
 from neurons import config
-
-from taoverse.model.eval.task import EvalTask
-from pretrain.datasets.factory import DatasetLoaderFactory
-from pretrain.datasets.ids import DatasetId
 from pretrain.dataset import SubsetLoader
+from pretrain.datasets.factory import DatasetLoaderFactory
 from pretrain.eval.sample import EvalSample
 from pretrain.validation import ScoreDetails
 
@@ -501,36 +499,11 @@ class Validator:
                                 f"Force downloading model for UID {next_uid} because it should be retried. Eval_history={eval_history}"
                             )
 
-                        # Special case for 14B*. We want to retry if the model is competitive in either 14B or 14B*.
-                        if competition.id == CompetitionId.B14_MODEL:
-                            # Check that 14B* is currently running.
-                            competition_14b = (
-                                competition_utils.get_competition_for_block(
-                                    CompetitionId.B14_MODEL_MULTI_DATASET,
-                                    curr_block,
-                                    constants.COMPETITION_SCHEDULE_BY_BLOCK,
-                                )
-                            )
-                            if competition_14b is not None:
-                                eval_history_14b_star = self.model_tracker.get_eval_results_for_miner_hotkey(
-                                    hotkey, CompetitionId.B14_MODEL_MULTI_DATASET
-                                )
-                                force_sync_14b_star = should_retry_model(
-                                    competition_14b.constraints.epsilon_func,
-                                    curr_block,
-                                    eval_history_14b_star,
-                                )
-                                if force_sync_14b_star:
-                                    # Even if it is already logging for 14B, also log for 14B*.
-                                    logging.debug(
-                                        f"Force downloading model for UID {next_uid} because it should be retried for 14B*. Eval_history={eval_history_14b_star}"
-                                    )
-                                    force_sync = True
-
                 # Compare metadata and tracker, syncing new model from remote store to local if necessary.
                 try:
                     updated = asyncio.run(
                         self.model_updater.sync_model(
+                            uid=next_uid,
                             hotkey=hotkey,
                             curr_block=curr_block,
                             schedule_by_block=constants.COMPETITION_SCHEDULE_BY_BLOCK,
@@ -634,6 +607,7 @@ class Validator:
                     try:
                         should_retry = asyncio.run(
                             self.model_updater.sync_model(
+                                uid=uid,
                                 hotkey=hotkey,
                                 curr_block=curr_block,
                                 schedule_by_block=constants.COMPETITION_SCHEDULE_BY_BLOCK,
@@ -900,23 +874,6 @@ class Validator:
 
         logging.info("Starting evaluation for competition: " + str(competition.id))
 
-        running_14b_star = (
-            competition.id == CompetitionId.B14_MODEL and
-            cur_block < constants.BLOCK_MULTI_DATASETS and
-            any(
-            comp.id == CompetitionId.B14_MODEL_MULTI_DATASET
-            for comp in competition_schedule
-            )
-        )
-
-        if running_14b_star:
-            competition_14b_star = competition_utils.get_competition_for_block(
-                comp_id=CompetitionId.B14_MODEL_MULTI_DATASET,
-                block=cur_block,
-                schedule_by_block=constants.COMPETITION_SCHEDULE_BY_BLOCK,
-            )
-            logging.info("Additionally running competition 14B* in parallel to 14B.")
-
         # Add uids with newly updated models to the upcoming batch of evaluations.
         with self.pending_uids_to_eval_lock:
             self.uids_to_eval[competition.id].update(
@@ -943,10 +900,6 @@ class Validator:
         uid_to_state = defaultdict(PerUIDEvalState)
 
         logging.trace(f"Current block: {cur_block}")
-
-        if running_14b_star:
-            # This will be set to a copy of 14b later with the additional eval losses appended.
-            uid_to_state_14b_star = defaultdict(PerUIDEvalState)
 
         # Get the tokenizer
         tokenizer = pt.model.load_tokenizer(
@@ -976,23 +929,18 @@ class Validator:
                 )
                 batches = list(data_loader)
 
-                # Shuffle before trancating the list
+                # Shuffle before truncating the list
                 random.Random(seed).shuffle(batches)
-
-                if cur_block < constants.BLOCK_MULTI_DATASETS:
-                    max_batches_per_dataset = len(batches)
-                else:
-                    max_batches_per_dataset = constants.MAX_BATCHES_PER_DATASET
 
                 if batches:
                     eval_tasks.append(eval_task)
                     data_loaders.append(data_loader)
 
                     logging.debug(
-                        f"Found {len(batches)} batches of size: {len(batches[0])} for data_loader: {data_loader.name}:{data_loader.config} over pages {data_loader.get_page_names()}. Up to {max_batches_per_dataset} batches were randomly chosen for evaluation."
+                        f"Found {len(batches)} batches of size: {len(batches[0])} for data_loader: {data_loader.name}:{data_loader.config} over pages {data_loader.get_page_names()}. Up to {constants.MAX_BATCHES_PER_DATASET} batches were randomly chosen for evaluation."
                     )
 
-                    samples.append(batches[:max_batches_per_dataset])
+                    samples.append(batches[: constants.MAX_BATCHES_PER_DATASET])
 
                 else:
                     raise ValueError(
@@ -1000,45 +948,6 @@ class Validator:
                     )
 
         logging.debug(f"Competition {competition.id} | Computing losses on {uids}")
-
-        if running_14b_star:
-            # Pull the latest sample data based on the competition.
-            load_data_perf_14b_star = PerfMonitor("Eval: Load data 14b star")
-
-            # This is a temporary hack until 14b star is itself a full competition.
-            eval_task_14b_star: EvalTask = None
-            data_loaders_14b_star: typing.List[SubsetLoader] = []
-            samples_14b_star: typing.List[typing.List[EvalSample]] = []
-
-            with load_data_perf_14b_star.sample():
-                # We only want the stack v2 here.
-                for task_14b_star in competition_14b_star.eval_tasks:
-                    if task_14b_star.name == "STACKV2_DEDUP":
-                        data_loader_14b_star = DatasetLoaderFactory.get_loader(
-                            dataset_id=task_14b_star.dataset_id,
-                            dataset_kwargs=task_14b_star.dataset_kwargs,
-                            seed=seed,
-                            sequence_length=competition_14b_star.constraints.sequence_length,
-                            tokenizer=tokenizer,
-                        )
-                        batches_14_star = list(data_loader_14b_star)
-                        if batches_14_star:
-                            eval_task_14b_star = task_14b_star
-                            # We overwrite the weight here to 1 as we are handling the weighting by sample ratio later.
-                            eval_task_14b_star.weight = 1
-                            data_loaders_14b_star.append(data_loader_14b_star)
-
-                            logging.debug(
-                                f"For 14b*: found {len(batches_14_star)} batches of size: {len(batches_14_star[0])} for data_loader: {data_loader_14b_star.name} over pages {data_loader_14b_star.get_page_names()}"
-                            )
-
-                            samples_14b_star.append(batches_14_star)
-                        else:
-                            raise ValueError(
-                                f"For 14b*: did not find any data for data loader: {data_loader_14b_star.name}"
-                            )
-
-            compute_loss_perf_14b_star = PerfMonitor("Eval: Compute loss 14b star")
 
         # Prepare evaluation.
         kwargs = competition.constraints.kwargs.copy()
@@ -1050,9 +959,6 @@ class Validator:
         for uid_i in uids:
             score: float = math.inf
             score_details = {task.name: ScoreDetails() for task in eval_tasks}
-            if running_14b_star:
-                score_14b_star: float = math.inf
-                score_details_14b_star = {eval_task_14b_star.name: ScoreDetails()}
 
             logging.trace(f"Getting metadata for uid: {uid_i}.")
 
@@ -1103,26 +1009,6 @@ class Validator:
                             ttl=430,
                             mode="spawn",
                         )
-                    if running_14b_star:
-                        with compute_loss_perf_14b_star.sample():
-                            try:
-                                score_14b_star, score_details_14b_star = (
-                                    utils.run_in_subprocess(
-                                        functools.partial(
-                                            pt.validation.score_model,
-                                            model_i,
-                                            [eval_task_14b_star],
-                                            samples_14b_star,
-                                            self.config.device,
-                                        ),
-                                        ttl=430,
-                                        mode="spawn",
-                                    )
-                                )
-                            except Exception:
-                                logging.error(
-                                    f"Error in eval loop: {traceback.format_exc()}. Setting 14b* score for uid: {uid_i} to infinity."
-                                )
                     del model_i
 
                 except Exception:
@@ -1140,40 +1026,6 @@ class Validator:
                 f"Computed model score for uid: {uid_i} with score: {score}. Details: {score_details}"
             )
 
-            if running_14b_star:
-                # Make a deep copy of the current uid_to_state, average out the scores, and append new details.
-                uid_to_state_14b_star[uid_i] = copy.deepcopy(uid_to_state[uid_i])
-                # For scores we know there are only two tasks, so we weight it by the additional 14b task.
-                num_fineweb_samples = score_details["FINEWEB_EDU2"].num_samples
-                num_stack_samples = score_details_14b_star["STACKV2_DEDUP"].num_samples
-                total_samples = num_fineweb_samples + num_stack_samples
-                fineweb_weighted_score = score * num_fineweb_samples / total_samples
-                stack_weighted_score = (
-                    score_14b_star * num_stack_samples / total_samples
-                )
-
-                uid_to_state_14b_star[uid_i].score = (
-                    fineweb_weighted_score + stack_weighted_score
-                )
-
-                # We also need to adjust the weighted score details as each thinks it was 100%.
-                # 14B only runs FINEWEB so we can just adjust this one score details.
-                uid_to_state_14b_star[uid_i].score_details[
-                    "FINEWEB_EDU2"
-                ].weighted_norm_score = fineweb_weighted_score
-                # Likewise we know 14B* only adds Stack V2
-                score_details_14b_star["STACKV2_DEDUP"].weighted_norm_score = (
-                    stack_weighted_score
-                )
-                # And copy over into the new score details dictionary.
-                uid_to_state_14b_star[uid_i].score_details["STACKV2_DEDUP"] = (
-                    score_details_14b_star["STACKV2_DEDUP"]
-                )
-
-                logging.info(
-                    f"Computed 14b* model score for uid: {uid_i} with score: {uid_to_state_14b_star[uid_i].score}. Details: {uid_to_state_14b_star[uid_i].score_details}"
-                )
-
         # Calculate new wins and win_rate with only the competitive uids considered.
         wins, win_rate = self._compute_and_set_competition_weights(
             cur_block=cur_block,
@@ -1181,21 +1033,6 @@ class Validator:
             uid_to_state=uid_to_state,
             competition=competition,
         )
-
-        if running_14b_star:
-            wins_14b_star, win_rate_14b_star = (
-                self._compute_and_set_competition_weights(
-                    cur_block=cur_block,
-                    uids=uids,
-                    uid_to_state=uid_to_state_14b_star,
-                    competition=competition_14b_star,
-                )
-            )
-            # Since we choose the models to keep based on weight only if they are in the win_rate dict,
-            # We need to add anything only winning in 14B* to it. We use a wr of 0 so it is only based on weight.
-            win_rate.update(
-                {key: 0.0 for key in win_rate_14b_star if key not in win_rate}
-            )
 
         # Get ids for all competitions in the schedule.
         active_competition_ids = set([comp.id for comp in competition_schedule])
@@ -1214,11 +1051,6 @@ class Validator:
         tracker_competition_weights = self.competition_tracker.get_competition_weights(
             competition.id
         )
-        if running_14b_star:
-            # Get the weights as if only the 14b and 14b* competition existed for purposes of model prioritization.
-            tracker_competition_weights = self.competition_tracker.get_subnet_weights(
-                [competition, competition_14b_star]
-            )
 
         model_prioritization = {
             uid: (
@@ -1275,36 +1107,6 @@ class Validator:
             compute_loss_perf,
             load_data_perf,
         )
-
-        if running_14b_star:
-            logging.debug(load_data_perf_14b_star.summary_str())
-            logging.debug(compute_loss_perf_14b_star.summary_str())
-
-            uids_to_competition_ids_14b_star = {
-                k: (
-                    CompetitionId.B14_MODEL_MULTI_DATASET.value
-                    if v == CompetitionId.B14_MODEL
-                    else v
-                )
-                for k, v in self._get_uids_to_competition_ids().items()
-            }
-
-            self.log_step(
-                CompetitionId.B14_MODEL_MULTI_DATASET,
-                competition.constraints.epsilon_func,
-                [eval_task_14b_star],
-                cur_block,
-                uids,
-                uid_to_state_14b_star,
-                uids_to_competition_ids_14b_star,
-                seed,
-                data_loaders + data_loaders_14b_star,
-                wins_14b_star,
-                win_rate_14b_star,
-                load_model_perf,
-                compute_loss_perf_14b_star,
-                load_data_perf_14b_star,
-            )
 
     def _compute_and_set_competition_weights(
         self,
