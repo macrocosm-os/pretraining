@@ -58,7 +58,9 @@ def best_uid(
 
     for _, miner_uid in top_miners:
         metadata = asyncio.run(
-            metadata_store.retrieve_model_metadata(metagraph.hotkeys[miner_uid])
+            metadata_store.retrieve_model_metadata(
+                miner_uid, metagraph.hotkeys[miner_uid]
+            )
         )
         if metadata and metadata.id.competition_id == competition_id:
             return miner_uid

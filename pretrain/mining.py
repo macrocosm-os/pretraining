@@ -175,7 +175,7 @@ async def get_repo(
         metagraph = bt.metagraph(netuid=constants.SUBNET_UID)
 
     hotkey = metagraph.hotkeys[uid]
-    model_metadata = await metadata_store.retrieve_model_metadata(hotkey)
+    model_metadata = await metadata_store.retrieve_model_metadata(uid, hotkey)
 
     if not model_metadata:
         raise ValueError(f"No model metadata found for miner {uid}")
@@ -229,7 +229,7 @@ async def load_remote_model(
         remote_model_store = HuggingFaceModelStore()
 
     hotkey = metagraph.hotkeys[uid]
-    model_metadata = await metadata_store.retrieve_model_metadata(hotkey)
+    model_metadata = await metadata_store.retrieve_model_metadata(uid, hotkey)
     if not model_metadata:
         raise ValueError(f"No model metadata found for miner {uid}")
 
