@@ -75,9 +75,12 @@ async def push(
     """
     logging.info("Pushing model")
 
+    subtensor = bt.subtensor()
+    subnet_uid = constants.SUBNET_UID
+
     if metadata_store is None:
         metadata_store = ChainModelMetadataStore(
-            subtensor=bt.subtensor(), subnet_uid=constants.SUBNET_UID, wallet=wallet
+            subtensor=subtensor, subnet_uid=subnet_uid, wallet=wallet
         )
 
     if remote_model_store is None:
@@ -117,8 +120,14 @@ async def push(
                 "Wrote model metadata to the chain. Checking we can read it back..."
             )
 
+            logging.debug(
+                "Retrieving model's UID..."
+            )
+
+            uid = subtensor.get_uid_for_hotkey_on_subnet(wallet.hotkey.ss58_address, subnet_uid)
+
             model_metadata = await metadata_store.retrieve_model_metadata(
-                wallet.hotkey.ss58_address
+                uid, wallet.hotkey.ss58_address
             )
 
             if (
@@ -175,7 +184,7 @@ async def get_repo(
         metagraph = bt.metagraph(netuid=constants.SUBNET_UID)
 
     hotkey = metagraph.hotkeys[uid]
-    model_metadata = await metadata_store.retrieve_model_metadata(hotkey)
+    model_metadata = await metadata_store.retrieve_model_metadata(uid, hotkey)
 
     if not model_metadata:
         raise ValueError(f"No model metadata found for miner {uid}")
@@ -229,7 +238,7 @@ async def load_remote_model(
         remote_model_store = HuggingFaceModelStore()
 
     hotkey = metagraph.hotkeys[uid]
-    model_metadata = await metadata_store.retrieve_model_metadata(hotkey)
+    model_metadata = await metadata_store.retrieve_model_metadata(uid, hotkey)
     if not model_metadata:
         raise ValueError(f"No model metadata found for miner {uid}")
 
