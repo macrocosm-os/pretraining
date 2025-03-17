@@ -73,8 +73,8 @@ from websockets.exceptions import InvalidStatus
 import constants
 import pretrain as pt
 from competitions.data import CompetitionId
-from model.retry import should_retry_model
 from neurons import config
+from pretrain.models.retry import should_retry_model
 from pretrain.dataset import SubsetLoader
 from pretrain.datasets.factory import DatasetLoaderFactory
 from pretrain.eval.sample import EvalSample
@@ -1006,7 +1006,7 @@ class Validator:
                                 samples,
                                 self.config.device,
                             ),
-                            ttl=430,
+                            ttl=480, # 8 minutes
                             mode="spawn",
                         )
                     del model_i
@@ -1315,6 +1315,7 @@ class Validator:
                     "PES2OX": "laion/Pes2oX-fulltext",
                     "FINEMATH_3P": "HuggingFaceTB/finemath:finemath-3p",
                     "INFIWEBMATH_3P": "HuggingFaceTB/finemath:infiwebmath-3p",
+                    "PPL_SPEECH": "MLCommons/peoples_speech"
                 }
                 dataset_name = (
                     task_to_dataset_name[task_name]

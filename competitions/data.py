@@ -16,6 +16,8 @@ class CompetitionId(IntEnum):
 
     B14_MODEL_MULTI_DATASET = 5
 
+    TTS_V0 = 6
+
     # Overwrite the default __repr__, which doesn't work with
     # bt.logging for some unknown reason.
     def __repr__(self) -> str:

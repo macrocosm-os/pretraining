@@ -47,6 +47,16 @@ def load_tokenizer(
     model_constraints: ModelConstraints, cache_dir: str = None
 ) -> PreTrainedTokenizer:
     """Returns the fixed tokenizer for the given model constraints."""
-    return AutoTokenizer.from_pretrained(
-        model_constraints.tokenizer, cache_dir=cache_dir
-    )
+
+    match model_constraints.tokenizer:
+        # This is a temporary hack for tts models.
+        # TODO: We should create an AutoTokenizer custom class to support tokenizer
+        #       for custom model types
+        case 'e2tts':
+            return 'tts_tokenizer'
+
+        # By default we use the HF AutoTokenizer class
+        case _:
+            return AutoTokenizer.from_pretrained(
+                model_constraints.tokenizer, cache_dir=cache_dir
+            )

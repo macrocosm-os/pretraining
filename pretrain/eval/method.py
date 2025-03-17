@@ -1,14 +1,24 @@
+import re
+import os
 import math
 import traceback
 import typing
+import string
+import numpy as np
 from enum import IntEnum
 
-import numpy as np
+from neurons import config
+
 import taoverse.utilities.logging as logging
 import torch
 import transformers
-from transformers import DynamicCache, PreTrainedModel
-
+from transformers import (
+    DynamicCache,
+    PreTrainedModel,
+    pipeline
+)
+from vocos import Vocos
+from jiwer import wer
 
 class EvalMethodId(IntEnum):
     """Enumeration of evaluation methods."""
@@ -18,6 +28,9 @@ class EvalMethodId(IntEnum):
     # Evalutes the model's performance on a text generation task by computing average cross entropy loss
     # on the entirety of the provided text.
     TEXT_LOSS = 1
+
+    # Word Error Rate
+    WER = 2
 
 
 def check_for_reasonable_output(
@@ -157,6 +170,96 @@ def compute_text_loss(
 
     return sum(losses) / len(losses) if losses else math.inf
 
+def compute_wer(
+        model,
+        batches: typing.List[dict],
+        device: str,
+        **kwargs
+) -> float:
+    """Compute the Work Error Rate (WER) of a TTS model.
+    """
+
+    # Get the validator configs
+    vali_config = config.validator_config()
+    models_dir = os.path.join(vali_config.model_dir, 'models')
+
+    # Load Vocos for decoding mel spectrograms into audio waves
+    # TODO: Find a workaround to the issue that Vocos.from_pretrained does
+    #       not take a cache_dir argument.
+    vocoder = Vocos.from_pretrained("charactr/vocos-mel-24khz").to(device)
+
+    # Define a model to transcribe voice to text.
+    transcriber = pipeline(model="openai/whisper-large-v2",
+                           device=device,
+                           model_kwargs={"cache_dir": models_dir}
+                           )
+
+    wer_scores = []
+    generated_waves = []
+
+    for sample in batches:
+
+        # Extract relevant inputs
+        ref_audio = torch.tensor(sample['ref_audio']).to(device)
+        tokenized_text = sample['tokenized_text']
+        query_text = sample['query_text']
+        gen_audio_len = sample['gen_audio_len']
+        ref_audio_len = sample['ref_audio_len']
+
+        with torch.inference_mode():
+            gen_mel_spectrogram = model.sample(
+                ref_audio=ref_audio,
+                text=tokenized_text,
+                gen_duration=gen_audio_len,
+            )
+
+        gen_mel_spectrogram = gen_mel_spectrogram.to(torch.float32)
+        gen_mel_spectrogram = gen_mel_spectrogram[:, ref_audio_len:, :]
+        gen_mel_spectrogram = gen_mel_spectrogram.permute(0, 2, 1)
+        generated_wave = vocoder.decode(gen_mel_spectrogram)
+
+        # Adjust RMS (volume)
+        rms = torch.sqrt(torch.mean(torch.square(generated_wave)))
+        target_rms = model.config['sampling'].get('target_rms', 0.1)
+        if rms < target_rms:
+            generated_wave = generated_wave * rms / target_rms
+
+        generated_waves.append(generated_wave.squeeze().cpu().numpy())
+
+
+    # transcribe
+    transcripts = transcriber(generated_waves)
+
+    for i, entry in enumerate(transcripts):
+
+        gen_text_transcript = clean_sentence(entry['text'])
+        query_text = clean_sentence(batches[i]['query_text'])
+
+        if len(gen_text_transcript) == 0:
+            # maximum error
+            wer_score = 1.0
+        else:
+            # Compute Word Error Rate (WER)
+            wer_score = wer(query_text,
+                            gen_text_transcript)
+
+        wer_scores.append(wer_score)
+
+    return sum(wer_scores) / len(wer_scores) if wer_scores else math.inf
+
+
+def clean_sentence(sentence: str) -> str:
+    """
+    Remove punctuation and multispaces before computing WER
+    """
+
+    # Remove punctuation.
+    no_punct = sentence.translate(str.maketrans("", "", string.punctuation))
+
+    # Replace multiple whitespace characters with a single space and strip leading/trailing spaces.
+    clean_sentence = re.sub(r'\s+', ' ', no_punct).strip()
+
+    return clean_sentence.lower()
 
 def generate_output(
     model,
