@@ -349,7 +349,7 @@ COMPETITION_SCHEDULE_BY_BLOCK: List[Tuple[int, List[Competition]]] = [
             Competition(
                 CompetitionId.TTS_V0,
                 MODEL_CONSTRAINTS_BY_COMPETITION_ID[CompetitionId.TTS_V0],
-                0.6,
+                0.55,
                 eval_tasks=[
                     EvalTask(
                         name="PPL_SPEECH",
@@ -444,7 +444,7 @@ COMPETITION_SCHEDULE_BY_BLOCK: List[Tuple[int, List[Competition]]] = [
             Competition(
                 CompetitionId.B14_MODEL,
                 MODEL_CONSTRAINTS_BY_COMPETITION_ID[CompetitionId.B14_MODEL],
-                0.25,
+                0.3,
                 eval_tasks=[
                     EvalTask(
                         name="FINEWEB",
