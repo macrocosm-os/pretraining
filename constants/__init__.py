@@ -55,7 +55,7 @@ SUBNET_UID = 9
 ROOT_DIR = Path(__file__).parent.parent
 
 # block to start the tts competition
-BLOCK_TTS = 4#015577#5_158#_017
+BLOCK_TTS = 5_177_981
 
 # Minimum stake to consider a validator when checking for miners with weights.
 # This corresponded to top-10 validator on july 31st, 2024
@@ -130,7 +130,7 @@ MODEL_CONSTRAINTS_BY_COMPETITION_ID: Dict[CompetitionId, ModelConstraints] = {
             "attn_implementation": "flash_attention_2",
         },
         eval_block_delay=EVAL_BLOCK_DELAY,
-        epsilon_func=LinearDecay(0.005, 0.0005, 50400),
+        epsilon_func=LinearDecay(0.005, 0.0005, 7200 * 7),
         max_bytes=15 * 1024 * 1024 * 1024,
     ),
     CompetitionId.B14_MODEL: ModelConstraints(
@@ -144,18 +144,49 @@ MODEL_CONSTRAINTS_BY_COMPETITION_ID: Dict[CompetitionId, ModelConstraints] = {
             "attn_implementation": "flash_attention_2",
         },
         eval_block_delay=EVAL_BLOCK_DELAY,
-        epsilon_func=LinearDecay(0.005, 0.0005, 72000),
+        epsilon_func=LinearDecay(0.005, 0.0005, 7200 * 10),
+        max_bytes=29 * 1024 * 1024 * 1024,
+    ),
+}
+
+MODEL_CONSTRAINTS_BY_COMPETITION_ID_2: Dict[CompetitionId, ModelConstraints] = {
+    CompetitionId.B3_MODEL: ModelConstraints(
+        max_model_parameter_size=3_400_000_000,
+        min_model_parameter_size=3_200_000_000,
+        sequence_length=4096,
+        allowed_architectures=ALLOWED_MODEL_TYPES_2,
+        tokenizer="Xenova/gpt-4",
+        kwargs={
+            "torch_dtype": torch.bfloat16,
+            "attn_implementation": "flash_attention_2",
+        },
+        eval_block_delay=EVAL_BLOCK_DELAY,
+        epsilon_func=LinearDecay(0.005, 0.0001, 7200 * 2),
+        max_bytes=15 * 1024 * 1024 * 1024,
+    ),
+    CompetitionId.B14_MODEL: ModelConstraints(
+        max_model_parameter_size=13_900_000_000,
+        min_model_parameter_size=13_700_000_000,
+        sequence_length=4096,
+        allowed_architectures=ALLOWED_MODEL_TYPES_2,
+        tokenizer="Xenova/gpt-4",
+        kwargs={
+            "torch_dtype": torch.bfloat16,
+            "attn_implementation": "flash_attention_2",
+        },
+        eval_block_delay=EVAL_BLOCK_DELAY,
+        epsilon_func=LinearDecay(0.005, 0.0001, 7200 * 2),
         max_bytes=29 * 1024 * 1024 * 1024,
     ),
     CompetitionId.TTS_V0: ModelConstraints(
-        max_model_parameter_size=1000_000_000,
-        min_model_parameter_size=0,
+        max_model_parameter_size=400_000_000,
+        min_model_parameter_size=350_000_000,
         sequence_length=None,
         allowed_architectures=ALLOWED_MODEL_TYPES_TTS,
         tokenizer="e2tts",
         eval_block_delay=EVAL_BLOCK_DELAY,
-        epsilon_func=LinearDecay(0.005, 0.0005, 72000),
-        max_bytes=29 * 1024 * 1024 * 1024,
+        epsilon_func=LinearDecay(0.005, 0.0005, 7200 * 7),
+        max_bytes=2 * 1024 * 1024 * 1024,
     ),
 
 }
@@ -317,7 +348,7 @@ COMPETITION_SCHEDULE_BY_BLOCK: List[Tuple[int, List[Competition]]] = [
         [
             Competition(
                 CompetitionId.TTS_V0,
-                MODEL_CONSTRAINTS_BY_COMPETITION_ID[CompetitionId.TTS_V0],
+                MODEL_CONSTRAINTS_BY_COMPETITION_ID_2[CompetitionId.TTS_V0],
                 0.6,
                 eval_tasks=[
                     EvalTask(
@@ -339,7 +370,7 @@ COMPETITION_SCHEDULE_BY_BLOCK: List[Tuple[int, List[Competition]]] = [
             ),
             Competition(
                 CompetitionId.B3_MODEL,
-                MODEL_CONSTRAINTS_BY_COMPETITION_ID[CompetitionId.B3_MODEL],
+                MODEL_CONSTRAINTS_BY_COMPETITION_ID_2[CompetitionId.B3_MODEL],
                 0.15,
                 eval_tasks=[
                     EvalTask(
@@ -412,7 +443,7 @@ COMPETITION_SCHEDULE_BY_BLOCK: List[Tuple[int, List[Competition]]] = [
             ),
             Competition(
                 CompetitionId.B14_MODEL,
-                MODEL_CONSTRAINTS_BY_COMPETITION_ID[CompetitionId.B14_MODEL],
+                MODEL_CONSTRAINTS_BY_COMPETITION_ID_2[CompetitionId.B14_MODEL],
                 0.25,
                 eval_tasks=[
                     EvalTask(
@@ -517,7 +548,7 @@ temperature = 0.01
 sample_min = 5
 # Max number of uids that can be either pending eval or currently being evaluated.
 # We allow the sample_min per competition + 10 additional models to be held at any one time.
-updated_models_limit = sample_min * len(MODEL_CONSTRAINTS_BY_COMPETITION_ID) + 10
+updated_models_limit = sample_min * len(MODEL_CONSTRAINTS_BY_COMPETITION_ID_2) + 10
 # time required between updates to the chain.
 chain_update_cadence = dt.timedelta(minutes=20)
 # Number of blocks required between retrying evaluation of a model.
