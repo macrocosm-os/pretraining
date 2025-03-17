@@ -41,7 +41,7 @@ def get_config():
     parser.add_argument(
         "--hf_repo_id",
         type=str,
-        help="The hugging face repo id, which should include the org or user and repo name. E.g. jdoe/pretraining",
+        help="The hugging face repo id, which should include the org or user and repo name. E.g. jdoe/model_name",
     )
     parser.add_argument(
         "--load_model_dir",
@@ -100,18 +100,9 @@ async def main(config: bt.config):
     metagraph_utils.assert_registered(wallet, metagraph)
     HuggingFaceModelStore.assert_access_token_exists()
 
-    # Get current model parameters
-    model_constraints = constants.MODEL_CONSTRAINTS_BY_COMPETITION_ID.get(
-        config.competition_id, None
-    )
-
-    if model_constraints is None:
-        raise RuntimeError(
-            f"Could not find current competition for id: {config.competition_id}"
-        )
 
     # Load the model from disk and push it to the chain and Hugging Face.
-    model = pt.mining.load_local_model(config.load_model_dir, model_constraints.kwargs)
+    model = pt.mining.load_local_model(config.load_model_dir, config.competition_id)
 
     await pt.mining.push(
         model,
