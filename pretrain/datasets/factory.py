@@ -10,6 +10,7 @@ from pretrain.dataset import (
     SubsetStackV2DedupLoader,
     SubsetFineMathLoader,
     SubsetInfiWebMathLoader,
+    SubsetPeopleSpeechLoader,    
 )
 
 from pretrain.datasets.ids import DatasetId
@@ -82,6 +83,11 @@ class DatasetLoaderFactory:
                     random_seed=seed,
                     sequence_length=sequence_length,
                     tokenizer=tokenizer,
+                    **dataset_kwargs,
+                )
+            case DatasetId.PPLSPEECH:
+                return SubsetPeopleSpeechLoader(
+                    random_seed=seed,
                     **dataset_kwargs,
                 )
             case _:

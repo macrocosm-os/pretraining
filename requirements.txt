@@ -1,4 +1,5 @@
 torch==2.4.1
+torchaudio==2.6.0
 bittensor==9.0.0
 huggingface-hub==0.25.2
 matplotlib==3.9.2
@@ -12,3 +13,6 @@ datasets==3.0.1
 flash-attn==2.6.3
 smart-open[s3]==7.0.5
 taoverse==1.4.1
+pydub==0.25.1
+vocos==0.1.0
+jiwer==3.1.0

@@ -8,6 +8,8 @@ from taoverse.model.competition.data import Competition, ModelConstraints
 from taoverse.model.competition.epsilon import LinearDecay
 from taoverse.model.eval.normalization import NormalizationId
 from taoverse.model.eval.task import EvalTask
+from taoverse.model.tts.e2tts import E2TTS
+
 from transformers import (
     BartForCausalLM,
     FalconForCausalLM,
@@ -32,7 +34,7 @@ from pretrain.eval.method import EvalMethodId
 # ---------------------------------
 
 # Release
-__version__ = "5.1.1"
+__version__ = "6.0.0"
 
 # Validator schema version
 __validator_version__ = "4.6.0"
@@ -52,6 +54,9 @@ SUBNET_UID = 9
 # The root directory of this project.
 ROOT_DIR = Path(__file__).parent.parent
 
+# block to start the tts competition
+BLOCK_TTS = 4#015577#5_158#_017
+
 # Minimum stake to consider a validator when checking for miners with weights.
 # This corresponded to top-10 validator on july 31st, 2024
 WEIGHT_SYNC_VALI_MIN_STAKE = 200_000
@@ -62,6 +67,7 @@ WEIGHT_SYNC_MINER_MIN_PERCENT = 0.05
 
 # Validator eval batch size.
 BATCH_SIZE = 1
+BATCH_SIZE_TTS = 1
 # Validators number of pages to eval over miners on each step.
 
 # This will be used before activation block BLOCK_MULTI_DATASETS
@@ -75,6 +81,7 @@ PAGES_PER_EVAL_STACK2 = 30
 PAGES_PER_EVAL_PES2OX = 2
 PAGES_PER_EVAL_FINEMATH3P = 6
 PAGES_PER_EVAL_WEBMATH3P = 6
+PAGES_PER_EVAL_PPLSPEECH = 1
 
 # Maximum number of batches to use for evaluation per dataset.
 MAX_BATCHES_PER_DATASET = 50
@@ -100,6 +107,9 @@ ALLOWED_MODEL_TYPES_2 = {
     GemmaForCausalLM,
     Gemma2ForCausalLM,
     Qwen2ForCausalLM,
+}
+ALLOWED_MODEL_TYPES_TTS = {
+    E2TTS
 }
 
 
@@ -137,8 +147,18 @@ MODEL_CONSTRAINTS_BY_COMPETITION_ID: Dict[CompetitionId, ModelConstraints] = {
         epsilon_func=LinearDecay(0.005, 0.0005, 72000),
         max_bytes=29 * 1024 * 1024 * 1024,
     ),
-}
+    CompetitionId.TTS_V0: ModelConstraints(
+        max_model_parameter_size=1000_000_000,
+        min_model_parameter_size=0,
+        sequence_length=None,
+        allowed_architectures=ALLOWED_MODEL_TYPES_TTS,
+        tokenizer="e2tts",
+        eval_block_delay=EVAL_BLOCK_DELAY,
+        epsilon_func=LinearDecay(0.005, 0.0005, 72000),
+        max_bytes=29 * 1024 * 1024 * 1024,
+    ),
 
+}
 # Schedule of competitions by block.
 COMPETITION_SCHEDULE_BY_BLOCK: List[Tuple[int, List[Competition]]] = [
     (
@@ -221,6 +241,179 @@ COMPETITION_SCHEDULE_BY_BLOCK: List[Tuple[int, List[Competition]]] = [
                 CompetitionId.B14_MODEL,
                 MODEL_CONSTRAINTS_BY_COMPETITION_ID[CompetitionId.B14_MODEL],
                 0.7,
+                eval_tasks=[
+                    EvalTask(
+                        name="FINEWEB",
+                        method_id=EvalMethodId.TEXT_LOSS,
+                        dataset_id=DatasetId.FINEWEB,
+                        normalization_id=NormalizationId.NONE,
+                        dataset_kwargs={
+                            "batch_size": BATCH_SIZE,
+                            "num_pages": PAGES_PER_EVAL_FINEWEB,
+                        },
+                        weight=0.3,
+                    ),
+                    EvalTask(
+                        name="FINEWEB_EDU2",
+                        method_id=EvalMethodId.TEXT_LOSS,
+                        dataset_id=DatasetId.FINEWEB2,
+                        normalization_id=NormalizationId.NONE,
+                        dataset_kwargs={
+                            "batch_size": BATCH_SIZE,
+                            "num_pages": PAGES_PER_EVAL_FINEWEB2,
+                        },
+                        weight=0.25,
+                    ),
+                    EvalTask(
+                        name="STACKV2_DEDUP",
+                        method_id=EvalMethodId.TEXT_LOSS,
+                        dataset_id=DatasetId.STACK2,
+                        normalization_id=NormalizationId.NONE,
+                        dataset_kwargs={
+                            "batch_size": BATCH_SIZE,
+                            "num_pages": PAGES_PER_EVAL_STACK2,
+                        },
+                        weight=0.35,
+                    ),
+                    EvalTask(
+                        name="PES2OX",
+                        method_id=EvalMethodId.TEXT_LOSS,
+                        dataset_id=DatasetId.PES2OX,
+                        normalization_id=NormalizationId.NONE,
+                        dataset_kwargs={
+                            "batch_size": BATCH_SIZE,
+                            "num_pages": PAGES_PER_EVAL_PES2OX,
+                        },
+                        weight=0.05,
+                    ),
+                    EvalTask(
+                        name="FINEMATH_3P",
+                        method_id=EvalMethodId.TEXT_LOSS,
+                        dataset_id=DatasetId.FINEMATH3P,
+                        normalization_id=NormalizationId.NONE,
+                        dataset_kwargs={
+                            "batch_size": BATCH_SIZE,
+                            "num_pages": PAGES_PER_EVAL_FINEMATH3P,
+                        },
+                        weight=0.03,
+                    ),
+                    EvalTask(
+                        name="INFIWEBMATH_3P",
+                        method_id=EvalMethodId.TEXT_LOSS,
+                        dataset_id=DatasetId.WEBMATH3P,
+                        normalization_id=NormalizationId.NONE,
+                        dataset_kwargs={
+                            "batch_size": BATCH_SIZE,
+                            "num_pages": PAGES_PER_EVAL_WEBMATH3P,
+                        },
+                        weight=0.02,
+                    ),
+                ],
+            ),
+        ],
+    ),
+    (
+        BLOCK_TTS,
+        [
+            Competition(
+                CompetitionId.TTS_V0,
+                MODEL_CONSTRAINTS_BY_COMPETITION_ID[CompetitionId.TTS_V0],
+                0.6,
+                eval_tasks=[
+                    EvalTask(
+                        name="PPL_SPEECH",
+                        method_id=EvalMethodId.WER,
+                        dataset_id=DatasetId.PPLSPEECH,
+                        normalization_id=NormalizationId.NONE,
+                        dataset_kwargs={
+                            "batch_size": BATCH_SIZE_TTS,
+                            "num_pages": PAGES_PER_EVAL_PPLSPEECH,
+                            "target_sr": 24000,
+                            "target_rms": 0.1,
+                            "ref_audio_max_duration": 15,
+                            "hop_length": 256
+                        },
+                        weight=1.0,
+                    ),
+                ],
+            ),
+            Competition(
+                CompetitionId.B3_MODEL,
+                MODEL_CONSTRAINTS_BY_COMPETITION_ID[CompetitionId.B3_MODEL],
+                0.15,
+                eval_tasks=[
+                    EvalTask(
+                        name="FINEWEB",
+                        method_id=EvalMethodId.TEXT_LOSS,
+                        dataset_id=DatasetId.FINEWEB,
+                        normalization_id=NormalizationId.NONE,
+                        dataset_kwargs={
+                            "batch_size": BATCH_SIZE,
+                            "num_pages": PAGES_PER_EVAL_FINEWEB,
+                        },
+                        weight=0.3,
+                    ),
+                    EvalTask(
+                        name="FINEWEB_EDU2",
+                        method_id=EvalMethodId.TEXT_LOSS,
+                        dataset_id=DatasetId.FINEWEB2,
+                        normalization_id=NormalizationId.NONE,
+                        dataset_kwargs={
+                            "batch_size": BATCH_SIZE,
+                            "num_pages": PAGES_PER_EVAL_FINEWEB2,
+                        },
+                        weight=0.25,
+                    ),
+                    EvalTask(
+                        name="STACKV2_DEDUP",
+                        method_id=EvalMethodId.TEXT_LOSS,
+                        dataset_id=DatasetId.STACK2,
+                        normalization_id=NormalizationId.NONE,
+                        dataset_kwargs={
+                            "batch_size": BATCH_SIZE,
+                            "num_pages": PAGES_PER_EVAL_STACK2,
+                        },
+                        weight=0.35,
+                    ),
+                    EvalTask(
+                        name="PES2OX",
+                        method_id=EvalMethodId.TEXT_LOSS,
+                        dataset_id=DatasetId.PES2OX,
+                        normalization_id=NormalizationId.NONE,
+                        dataset_kwargs={
+                            "batch_size": BATCH_SIZE,
+                            "num_pages": PAGES_PER_EVAL_PES2OX,
+                        },
+                        weight=0.05,
+                    ),
+                    EvalTask(
+                        name="FINEMATH_3P",
+                        method_id=EvalMethodId.TEXT_LOSS,
+                        dataset_id=DatasetId.FINEMATH3P,
+                        normalization_id=NormalizationId.NONE,
+                        dataset_kwargs={
+                            "batch_size": BATCH_SIZE,
+                            "num_pages": PAGES_PER_EVAL_FINEMATH3P,
+                        },
+                        weight=0.03,
+                    ),
+                    EvalTask(
+                        name="INFIWEBMATH_3P",
+                        method_id=EvalMethodId.TEXT_LOSS,
+                        dataset_id=DatasetId.WEBMATH3P,
+                        normalization_id=NormalizationId.NONE,
+                        dataset_kwargs={
+                            "batch_size": BATCH_SIZE,
+                            "num_pages": PAGES_PER_EVAL_WEBMATH3P,
+                        },
+                        weight=0.02,
+                    ),
+                ],
+            ),
+            Competition(
+                CompetitionId.B14_MODEL,
+                MODEL_CONSTRAINTS_BY_COMPETITION_ID[CompetitionId.B14_MODEL],
+                0.25,
                 eval_tasks=[
                     EvalTask(
                         name="FINEWEB",

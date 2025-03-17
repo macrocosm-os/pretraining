@@ -19,8 +19,9 @@
 import os
 import time
 from dataclasses import replace
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
+import torch
 import bittensor as bt
 import huggingface_hub
 from safetensors.torch import load_model
@@ -36,10 +37,11 @@ from taoverse.model.storage.model_metadata_store import ModelMetadataStore
 from taoverse.model.storage.remote_model_store import RemoteModelStore
 from taoverse.model.utils import get_hash_of_two_strings
 from taoverse.utilities import logging
-from transformers import AutoModelForCausalLM, PreTrainedModel
+from transformers import PreTrainedModel
 
 import constants
 import pretrain as pt
+from pretrain.models.factory import ModelFactory
 from competitions.data import CompetitionId
 
 
@@ -199,15 +201,13 @@ def load_gpt2_model(model_file: str) -> PreTrainedModel:
     return model
 
 
-def load_local_model(model_dir: str, kwargs: Dict[str, Any]) -> PreTrainedModel:
+def load_local_model(model_dir: str, competition_id:str) -> Union[PreTrainedModel, torch.nn.Module]:
     """Loads a model from a directory."""
-    return AutoModelForCausalLM.from_pretrained(
-        pretrained_model_name_or_path=model_dir,
-        local_files_only=True,
-        use_safetensors=True,
-        **kwargs,
-    )
 
+    model = ModelFactory.get_model(model_dir = model_dir,
+                                   competition_id = competition_id)
+    
+    return model
 
 async def load_remote_model(
     uid: int,

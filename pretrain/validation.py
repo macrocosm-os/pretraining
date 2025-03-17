@@ -29,9 +29,12 @@ from taoverse.model.data import Model
 from taoverse.model.eval.normalization import normalize_score
 from taoverse.model.eval.task import EvalTask
 
-from pretrain.eval.method import EvalMethodId, compute_text_loss
+from pretrain.eval.method import (
+    EvalMethodId,
+    compute_text_loss,
+    compute_wer
+)
 from pretrain.eval.sample import EvalSample
-
 
 def iswin(
     loss_i: float,
@@ -167,6 +170,12 @@ def score_model(
                         batches=samples,
                         device=device,
                         pad_token_id=tokenizer.eos_token_id,
+                    )
+                case EvalMethodId.WER:
+                    raw_score = compute_wer(
+                        model=model.pt_model,
+                        batches=samples,
+                        device=device,
                     )
                 case _:
                     raise ValueError(f"Unhandled evaluation method {task.method_id}.")
