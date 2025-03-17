@@ -118,7 +118,7 @@ SYNC_BLOCK_CADENCE = 150
 # Delay at least as long as the sync block cadence with an additional buffer.
 EVAL_BLOCK_DELAY = SYNC_BLOCK_CADENCE + 100
 
-MODEL_CONSTRAINTS_BY_COMPETITION_ID: Dict[CompetitionId, ModelConstraints] = {
+MODEL_CONSTRAINTS_BY_COMPETITION_ID_TMP: Dict[CompetitionId, ModelConstraints] = {
     CompetitionId.B3_MODEL: ModelConstraints(
         max_model_parameter_size=3_400_000_000,
         min_model_parameter_size=3_200_000_000,
@@ -149,7 +149,7 @@ MODEL_CONSTRAINTS_BY_COMPETITION_ID: Dict[CompetitionId, ModelConstraints] = {
     ),
 }
 
-MODEL_CONSTRAINTS_BY_COMPETITION_ID_2: Dict[CompetitionId, ModelConstraints] = {
+MODEL_CONSTRAINTS_BY_COMPETITION_ID: Dict[CompetitionId, ModelConstraints] = {
     CompetitionId.B3_MODEL: ModelConstraints(
         max_model_parameter_size=3_400_000_000,
         min_model_parameter_size=3_200_000_000,
@@ -197,7 +197,7 @@ COMPETITION_SCHEDULE_BY_BLOCK: List[Tuple[int, List[Competition]]] = [
         [
             Competition(
                 CompetitionId.B3_MODEL,
-                MODEL_CONSTRAINTS_BY_COMPETITION_ID[CompetitionId.B3_MODEL],
+                MODEL_CONSTRAINTS_BY_COMPETITION_ID_TMP[CompetitionId.B3_MODEL],
                 0.3,
                 eval_tasks=[
                     EvalTask(
@@ -270,7 +270,7 @@ COMPETITION_SCHEDULE_BY_BLOCK: List[Tuple[int, List[Competition]]] = [
             ),
             Competition(
                 CompetitionId.B14_MODEL,
-                MODEL_CONSTRAINTS_BY_COMPETITION_ID[CompetitionId.B14_MODEL],
+                MODEL_CONSTRAINTS_BY_COMPETITION_ID_TMP[CompetitionId.B14_MODEL],
                 0.7,
                 eval_tasks=[
                     EvalTask(
@@ -348,7 +348,7 @@ COMPETITION_SCHEDULE_BY_BLOCK: List[Tuple[int, List[Competition]]] = [
         [
             Competition(
                 CompetitionId.TTS_V0,
-                MODEL_CONSTRAINTS_BY_COMPETITION_ID_2[CompetitionId.TTS_V0],
+                MODEL_CONSTRAINTS_BY_COMPETITION_ID[CompetitionId.TTS_V0],
                 0.6,
                 eval_tasks=[
                     EvalTask(
@@ -370,7 +370,7 @@ COMPETITION_SCHEDULE_BY_BLOCK: List[Tuple[int, List[Competition]]] = [
             ),
             Competition(
                 CompetitionId.B3_MODEL,
-                MODEL_CONSTRAINTS_BY_COMPETITION_ID_2[CompetitionId.B3_MODEL],
+                MODEL_CONSTRAINTS_BY_COMPETITION_ID[CompetitionId.B3_MODEL],
                 0.15,
                 eval_tasks=[
                     EvalTask(
@@ -443,7 +443,7 @@ COMPETITION_SCHEDULE_BY_BLOCK: List[Tuple[int, List[Competition]]] = [
             ),
             Competition(
                 CompetitionId.B14_MODEL,
-                MODEL_CONSTRAINTS_BY_COMPETITION_ID_2[CompetitionId.B14_MODEL],
+                MODEL_CONSTRAINTS_BY_COMPETITION_ID[CompetitionId.B14_MODEL],
                 0.25,
                 eval_tasks=[
                     EvalTask(
@@ -548,7 +548,7 @@ temperature = 0.01
 sample_min = 5
 # Max number of uids that can be either pending eval or currently being evaluated.
 # We allow the sample_min per competition + 10 additional models to be held at any one time.
-updated_models_limit = sample_min * len(MODEL_CONSTRAINTS_BY_COMPETITION_ID_2) + 10
+updated_models_limit = sample_min * len(MODEL_CONSTRAINTS_BY_COMPETITION_ID) + 10
 # time required between updates to the chain.
 chain_update_cadence = dt.timedelta(minutes=20)
 # Number of blocks required between retrying evaluation of a model.
