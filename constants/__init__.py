@@ -59,7 +59,7 @@ BLOCK_TTS = 5_177_981
 
 # Minimum stake to consider a validator when checking for miners with weights.
 # This corresponded to top-10 validator on july 31st, 2024
-WEIGHT_SYNC_VALI_MIN_STAKE = 200_000
+WEIGHT_SYNC_VALI_MIN_STAKE = 50_000
 
 # Minimum percent of weight on a vali for a miner to be considered a top miner.
 # Since there can be multiple competitions at different reward percentages we can't just check biggest.
