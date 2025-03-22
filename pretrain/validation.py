@@ -153,6 +153,17 @@ def score_model(
     if not model.tokenizer:
         raise ValueError("Model does not have a tokenizer")
 
+    # If some datasets fail to load, the sum of task weights will not be 1.
+    # So we need to renormalize the weights to sum to 1.
+    total_task_weights = sum(task.weight for task in evals)
+    if not math.isclose(total_task_weights, 1):
+        logging.warning(f"Total weight of evaluation tasks {total_task_weights} does not sum to 1.")
+        logging.warning("Renormalizing weights...")
+        evals = [dataclasses.replace(task, weight=task.weight / total_task_weights) for task in evals]
+
+    # Log the new weights
+    logging.info(f"New task weights: {[(task.name, task.weight) for task in evals]}")
+    
     with torch.inference_mode():
         model.pt_model.to(device)
         model.pt_model.eval()

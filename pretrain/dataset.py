@@ -61,7 +61,7 @@ class SubsetLoader(IterableDataset):
 
         self.num_rows_per_page = 50
         self.duplicate_page_threshold = 100
-        self.retry_limit = 10
+        self.retry_limit = 15
         self.retry_delay = 5
 
         # Buffers
@@ -401,9 +401,11 @@ class SubsetFineWebEdu2Loader(SubsetLoader):
             except requests.exceptions.RequestException as e:
                 attempts += 1
                 logging.warning(
-                    f"Failed to fetch data, retrying. Attempt {attempts}/{self.retry_limit * num_pages}"
+                    f"Failed to fetch data, retrying. Attempt {attempts}/{self.retry_limit}"
                 )
-                if attempts >= num_pages * self.retry_limit:
+                if attempts < self.retry_limit:
+                    time.sleep(self.retry_delay)
+                else:
                     logging.error("Maximum retry limit reached. Unable to fetch data.")
                     raise
 
@@ -470,9 +472,11 @@ class SubsetFineWebEdu2Loader(SubsetLoader):
                 attempts += 1
                 logging.warning(
                     f"Failed to fetch data, retrying with a newly sampled page. "
-                    f"Attempt {attempts}/{self.retry_limit * num_pages}"
+                    f"Attempt {attempts}/{self.retry_limit}"
                 )
-                if attempts >= num_pages * self.retry_limit:
+                if attempts < self.retry_limit:
+                    time.sleep(self.retry_delay)
+                else:
                     logging.error("Maximum retry limit reached. Unable to fetch data.")
                     raise
 
@@ -528,7 +532,7 @@ class SubsetPeopleSpeechLoader(SubsetFineWebEdu2Loader):
 
         self.num_rows_per_page = 40
         self.duplicate_page_threshold = 100
-        self.retry_limit = 10
+        self.retry_limit = 15
         self.retry_delay = 5
 
         # Buffers
