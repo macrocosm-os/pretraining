@@ -34,10 +34,10 @@ from pretrain.eval.method import EvalMethodId
 # ---------------------------------
 
 # Release
-__version__ = "6.0.1"
+__version__ = "6.0.2"
 
 # Validator schema version
-__validator_version__ = "4.6.1"
+__validator_version__ = "4.6.2"
 version_split = __validator_version__.split(".")
 __spec_version__ = (
     (1000 * int(version_split[0]))
@@ -59,7 +59,7 @@ BLOCK_TTS = 5_177_981
 
 # Minimum stake to consider a validator when checking for miners with weights.
 # This corresponded to top-10 validator on july 31st, 2024
-WEIGHT_SYNC_VALI_MIN_STAKE = 200_000
+WEIGHT_SYNC_VALI_MIN_STAKE = 50_000
 
 # Minimum percent of weight on a vali for a miner to be considered a top miner.
 # Since there can be multiple competitions at different reward percentages we can't just check biggest.
@@ -185,7 +185,7 @@ MODEL_CONSTRAINTS_BY_COMPETITION_ID: Dict[CompetitionId, ModelConstraints] = {
         allowed_architectures=ALLOWED_MODEL_TYPES_TTS,
         tokenizer="e2tts",
         eval_block_delay=EVAL_BLOCK_DELAY,
-        epsilon_func=LinearDecay(0.005, 0.0005, 7200 * 7),
+        epsilon_func=LinearDecay(0.005, 0.0005, 7200 * 10),
         max_bytes=2 * 1024 * 1024 * 1024,
     ),
 
@@ -209,7 +209,18 @@ COMPETITION_SCHEDULE_BY_BLOCK: List[Tuple[int, List[Competition]]] = [
                             "batch_size": BATCH_SIZE,
                             "num_pages": PAGES_PER_EVAL_FINEWEB,
                         },
-                        weight=0.55,
+                        weight=0.30,
+                    ),
+                    EvalTask(
+                        name="FINEWEB_EDU2",
+                        method_id=EvalMethodId.TEXT_LOSS,
+                        dataset_id=DatasetId.FINEWEB2,
+                        normalization_id=NormalizationId.NONE,
+                        dataset_kwargs={
+                            "batch_size": BATCH_SIZE,
+                            "num_pages": PAGES_PER_EVAL_FINEWEB2,
+                        },
+                        weight=0.25,
                     ),
                     EvalTask(
                         name="STACKV2_DEDUP",
@@ -271,7 +282,18 @@ COMPETITION_SCHEDULE_BY_BLOCK: List[Tuple[int, List[Competition]]] = [
                             "batch_size": BATCH_SIZE,
                             "num_pages": PAGES_PER_EVAL_FINEWEB,
                         },
-                        weight=0.55,
+                        weight=0.3,
+                    ),
+                    EvalTask(
+                        name="FINEWEB_EDU2",
+                        method_id=EvalMethodId.TEXT_LOSS,
+                        dataset_id=DatasetId.FINEWEB2,
+                        normalization_id=NormalizationId.NONE,
+                        dataset_kwargs={
+                            "batch_size": BATCH_SIZE,
+                            "num_pages": PAGES_PER_EVAL_FINEWEB2,
+                        },
+                        weight=0.25,
                     ),
                     EvalTask(
                         name="STACKV2_DEDUP",
@@ -360,7 +382,18 @@ COMPETITION_SCHEDULE_BY_BLOCK: List[Tuple[int, List[Competition]]] = [
                             "batch_size": BATCH_SIZE,
                             "num_pages": PAGES_PER_EVAL_FINEWEB,
                         },
-                        weight=0.55,
+                        weight=0.3,
+                    ),
+                    EvalTask(
+                        name="FINEWEB_EDU2",
+                        method_id=EvalMethodId.TEXT_LOSS,
+                        dataset_id=DatasetId.FINEWEB2,
+                        normalization_id=NormalizationId.NONE,
+                        dataset_kwargs={
+                            "batch_size": BATCH_SIZE,
+                            "num_pages": PAGES_PER_EVAL_FINEWEB2,
+                        },
+                        weight=0.25,
                     ),
                     EvalTask(
                         name="STACKV2_DEDUP",
@@ -422,7 +455,18 @@ COMPETITION_SCHEDULE_BY_BLOCK: List[Tuple[int, List[Competition]]] = [
                             "batch_size": BATCH_SIZE,
                             "num_pages": PAGES_PER_EVAL_FINEWEB,
                         },
-                        weight=0.55,
+                        weight=0.3,
+                    ),
+                    EvalTask(
+                        name="FINEWEB_EDU2",
+                        method_id=EvalMethodId.TEXT_LOSS,
+                        dataset_id=DatasetId.FINEWEB2,
+                        normalization_id=NormalizationId.NONE,
+                        dataset_kwargs={
+                            "batch_size": BATCH_SIZE,
+                            "num_pages": PAGES_PER_EVAL_FINEWEB2,
+                        },
+                        weight=0.25,
                     ),
                     EvalTask(
                         name="STACKV2_DEDUP",

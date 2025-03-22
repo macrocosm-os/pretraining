@@ -582,7 +582,7 @@ class Validator:
             constants.WEIGHT_SYNC_VALI_MIN_STAKE,
             constants.WEIGHT_SYNC_MINER_MIN_PERCENT,
         )
-
+        
         with self.pending_uids_to_eval_lock:
             all_uids_to_eval = set()
             all_pending_uids_to_eval = set()
@@ -853,7 +853,8 @@ class Validator:
         """
 
         cur_block = self._get_current_block()
-
+        logging.info(f"Current block: {cur_block}")
+        
         # Get the competition schedule for the current block.
         # This is a list of competitions
         competition_schedule: typing.List[Competition] = (
@@ -865,12 +866,7 @@ class Validator:
 
         # Every validator step should pick a single competition in a round-robin fashion
         competition = competition_schedule[self.global_step % len(competition_schedule)]
-        # If the competition is 14b* we skip it since we run it concurrently with 14b instead.
-        if competition.id == CompetitionId.B14_MODEL_MULTI_DATASET:
-            logging.info(
-                "Skipping step for B14* competition. It will be evaluated as part of the regular B14 competition."
-            )
-            return
+
 
         logging.info("Starting evaluation for competition: " + str(competition.id))
 
@@ -899,7 +895,6 @@ class Validator:
 
         uid_to_state = defaultdict(PerUIDEvalState)
 
-        logging.trace(f"Current block: {cur_block}")
 
         # Get the tokenizer
         tokenizer = pt.model.load_tokenizer(
@@ -920,13 +915,19 @@ class Validator:
         # Load data based on the competition.
         with load_data_perf.sample():
             for eval_task in competition.eval_tasks:
-                data_loader = DatasetLoaderFactory.get_loader(
-                    dataset_id=eval_task.dataset_id,
-                    dataset_kwargs=eval_task.dataset_kwargs,
-                    seed=seed,
-                    sequence_length=competition.constraints.sequence_length,
-                    tokenizer=tokenizer,
-                )
+                try:
+                    data_loader = DatasetLoaderFactory.get_loader(
+                        dataset_id=eval_task.dataset_id,
+                        dataset_kwargs=eval_task.dataset_kwargs,
+                        seed=seed,
+                        sequence_length=competition.constraints.sequence_length,
+                        tokenizer=tokenizer,
+                    )
+                except Exception as e:
+                    logging.error(f"Error loading data for task {eval_task.name}: {e}")
+                    logging.error(f"Skipping task {eval_task.name} for competition {competition.id}")
+                    continue
+
                 batches = list(data_loader)
 
                 # Shuffle before truncating the list
@@ -1006,7 +1007,7 @@ class Validator:
                                 samples,
                                 self.config.device,
                             ),
-                            ttl=480, # 8 minutes
+                            ttl=500, # > 8 minutes
                             mode="spawn",
                         )
                     del model_i
