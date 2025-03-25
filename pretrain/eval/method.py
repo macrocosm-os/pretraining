@@ -174,6 +174,7 @@ def compute_wer(
         model,
         batches: typing.List[dict],
         device: str,
+        seed: int,
         **kwargs
 ) -> float:
     """Compute the Work Error Rate (WER) of a TTS model.
@@ -211,6 +212,7 @@ def compute_wer(
                 ref_audio=ref_audio,
                 text=tokenized_text,
                 gen_duration=gen_audio_len,
+                seed=seed,
             )
 
         gen_mel_spectrogram = gen_mel_spectrogram.to(torch.float32)
