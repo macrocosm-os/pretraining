@@ -1006,8 +1006,9 @@ class Validator:
                                 eval_tasks,
                                 samples,
                                 self.config.device,
+                                seed,
                             ),
-                            ttl=500, # > 8 minutes
+                            ttl=550,
                             mode="spawn",
                         )
                     del model_i
