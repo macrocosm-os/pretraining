@@ -134,6 +134,7 @@ def score_model(
     evals: typing.List[EvalTask],
     samples: typing.List[typing.List[EvalSample]],
     device: str,
+    seed: int,
 ) -> typing.Tuple[float, dict]:
     """Scores a model based on the provided eval tasks.
 
@@ -187,6 +188,7 @@ def score_model(
                         model=model.pt_model,
                         batches=samples,
                         device=device,
+                        seed=seed,
                     )
                 case _:
                     raise ValueError(f"Unhandled evaluation method {task.method_id}.")
