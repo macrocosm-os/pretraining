@@ -824,8 +824,10 @@ class Validator:
 
             return _get_seed_with_retry()
         except:
-            logging.trace(f"Failed to get hash of sync block. Using fallback seed.")
-            return None
+            logging.info(f"Failed to get hash of sync block. Using fallback seed.")
+            # generate a random seed
+            seed = random.randint(0, 2**32 - 1)
+            return seed
 
     async def try_run_step(self, ttl: int):
         """Runs a step with ttl in a background process, without raising exceptions if it times out."""
@@ -910,7 +912,7 @@ class Validator:
         data_loaders: typing.List[SubsetLoader] = []
         samples: typing.List[typing.List[EvalSample]] = []
 
-        logging.debug(f"Seed used for loading data is: {seed}.")
+        logging.info(f"Seed used for loading data is: {seed}.")
 
         # Load data based on the competition.
         with load_data_perf.sample():
@@ -1374,7 +1376,7 @@ class Validator:
         console.print(table)
 
         # Sink step log.
-        logging.trace(f"Step results: {step_log}")
+        logging.info(f"Step results: {step_log}")
 
         if self.config.wandb.on and not self.config.offline:
             # If we have already completed X steps then we will complete the current wandb run and make a new one.
