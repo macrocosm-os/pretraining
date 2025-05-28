@@ -1534,10 +1534,9 @@ class TempValidator:
         # Set up the configuration parser.
         parser = argparse.ArgumentParser(
             description="Temp SN9 Validator",
-            usage="python3 sn9_temp_vali.py <command> [options]",
+            usage="python3 sn9_temp_vali.py [options]",
             add_help=True,
         )
-        # Remove subcommand parser - script runs directly without needing "run" command
         run_command_parser = parser
 
         # Adds override arguments for network and netuid.
