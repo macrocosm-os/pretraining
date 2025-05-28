@@ -1537,10 +1537,8 @@ class TempValidator:
             usage="python3 sn9_temp_vali.py <command> [options]",
             add_help=True,
         )
-        command_parser = parser.add_subparsers(dest="command")
-        run_command_parser = command_parser.add_parser(
-            "run", help="""Run the validator"""
-        )
+        # Remove subcommand parser - script runs directly without needing "run" command
+        run_command_parser = parser
 
         # Adds override arguments for network and netuid.
         run_command_parser.add_argument(
@@ -1650,6 +1648,7 @@ class TempValidator:
 
             # Set weights to burn UID.
             uids = [burn_uid]
+            print(f"Burn UID: {burn_uid}")
             weights = [1.0]
 
             # Set weights.
@@ -1664,7 +1663,7 @@ class TempValidator:
             )
             if not success:
                 print(f"Error setting weights: {message}")
-                time.sleep(10)
+                time.sleep(self.config.set_weights_interval * BLOCK_TIME)
                 continue
 
             print("Weights set.")
